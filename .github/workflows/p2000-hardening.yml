@@ -98,3 +98,11 @@ jobs:
               Remove-Item Env:PDW_PRESERVATION_REPLAY_EXIT -ErrorAction SilentlyContinue
             }
           }
+
+      - name: Upload P2000 regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2000-regression-evidence
+          path: preservation-local
+          if-no-files-found: warn
