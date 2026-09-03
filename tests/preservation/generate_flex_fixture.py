@@ -21,7 +21,7 @@ CAPCODE = 123456
 SYNC_WORDS = (0x870C, 0xA6C6, 0xAAAA, 0x78F3)
 EXPECTED_SHA256 = {
     "tone": "b1af5b7ee1d04dd6636d8c1ddac7a86ec35f70fec0360361c9f0679e5f879c9a",
-    "alpha": "f58f41f0582f779ecaf2a74a12fc580983d5d1f22862b036bc896ae0a4416e5a",
+    "alpha": "315a0a3a12efc99df1fb9ee199f0625732d079855b362e1c851fb174e74a98cc",
 }
 ALPHA_MESSAGE = "FLEX GOLDEN OK!"
 
@@ -50,16 +50,25 @@ def pack_alpha_word(text: str) -> int:
     return ord(text[0]) | (ord(text[1]) << 7) | (ord(text[2]) << 14)
 
 
+def alpha_data_words(message: str) -> list[int]:
+    # Legacy FLEX::showframe() treats fragment number 3 as an unfragmented
+    # message, but still skips the low 7 bits of the first post-header word.
+    # Keep that historical header slot explicit and terminate unused visible
+    # character positions with ETX so the requested payload is exact.
+    characters = "\x00" + message + "\x03\x03"
+    assert len(characters) == 18
+    return [
+        pack_alpha_word(characters[index:index + 3])
+        for index in range(0, len(characters), 3)
+    ]
+
+
 ALPHA_FRAME_WORDS = [
     0x000807,                 # BIW: asa=1, vsa=2
     CAPCODE + 32768,          # short address
-    0x0181D8,                 # ALPHA vector: header at 3, six words total
+    0x01C1D4,                 # ALPHA vector: header at 3, seven words total
     0x001800,                 # fragment header, fragment number 3
-    *[
-        pack_alpha_word(ALPHA_MESSAGE[index:index + 3])
-        for index in range(0, len(ALPHA_MESSAGE), 3)
-    ],
-    0x15CCCC,
+    *alpha_data_words(ALPHA_MESSAGE),
     0x15FFFF,
     0x15EEEE,
     0x159999,
@@ -159,11 +168,18 @@ def validate_frame_words(kind: str, words: list[int]) -> None:
     assert len(ALPHA_MESSAGE) == 15
     assert ((words[2] >> 4) & 0x7) == 5
     assert ((words[2] >> 7) & 0x7F) == 3
-    assert ((words[2] >> 14) & 0x7F) == 6
+    assert ((words[2] >> 14) & 0x7F) == 7
     assert ((words[3] >> 11) & 0x3) == 3
-    assert words[4:9] == [0x116646, 0x11D058, 0x11264F, 0x082745, 0x0865CF]
+    assert words[4:10] == [
+        0x132300,
+        0x082C45,
+        0x1327C7,
+        0x13A2C4,
+        0x12E7A0,
+        0x00C1A1,
+    ]
     first = [encode_codeword(flex_wire_info(value)) for value in words[:4]]
-    assert first == [0x1FEFFD67, 0xFDB9BCA2, 0xE47E7A08, 0xFFE7FCC6]
+    assert first == [0x1FEFFD67, 0xFDB9BCA2, 0xD47C79A3, 0xFFE7FCC6]
 
 
 def build_bits(kind: str) -> list[int]:
