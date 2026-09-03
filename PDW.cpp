@@ -7408,7 +7408,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 	int sep_en=0, sep1=0, sep2=0, sep3=0;
 	
 	char temp_cap[FILTER_CAPCODE_LEN+1]="",
-		 temp[MAX_PATH],
+		 temp[MAX_STR_LEN],
 		 tmp_text[FILTER_TEXT_LEN+1],
 		 tmp_sepfile[3][MAX_PATH];
 
