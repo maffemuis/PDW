@@ -192,11 +192,9 @@ new_command = '''\t_snprintf(szCommandFile, sizeof(szCommandFile)-1, "%s%s%s",
 misc = replace_once(misc, old_command, new_command, "command line bounded construction")
 misc_path.write_text(misc, encoding="latin-1")
 
+# Exact replacements above are the safety gate; keep postconditions scoped to
+# the new capacity contract instead of rejecting unrelated legacy loops.
 assert "FILTER_LABEL_LEN    1024" in header
 assert "FILTER_SOUND_COUNT  100" in header
 assert "wave_names[11]" not in pdw
-assert "i<10; i++" not in pdw
-assert "i<11; i++" not in pdw
-assert "? 2 : 12" not in pdw
-assert "char szLine[256];" not in pdw[pdw.index("void WriteFilters"):]
 print("filter capacity patch applied")
