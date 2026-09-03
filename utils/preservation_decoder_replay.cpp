@@ -77,10 +77,6 @@ bool FeedDecoder(
             MOBITEX_To_Bits(legacy_samples, legacy_count);
             return true;
 
-        case PRESERVATION_REPLAY_ROUTE_ERMES:
-            ERMES_To_Bits(legacy_samples, legacy_count);
-            return true;
-
         default:
             return false;
     }

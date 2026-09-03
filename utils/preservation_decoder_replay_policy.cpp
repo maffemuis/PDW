@@ -31,6 +31,15 @@ int PreservationValidateReplayPolicy(
         return PRESERVATION_REPLAY_POLICY_MULTIPLE_MODES;
     }
 
+    // Current live sound-card processing does not feed ERMES audio: the
+    // ERMES_To_Bits path in sound_in.cpp is commented out and has no linked
+    // implementation. Preservation replay must mirror that behavior rather
+    // than invent a new decoder path.
+    if (monitor_ermes)
+    {
+        return PRESERVATION_REPLAY_POLICY_ERMES_AUDIO_UNSUPPORTED;
+    }
+
     if (configured_sample_rate == 0
         || recording_sample_rate == 0
         || configured_sample_rate != recording_sample_rate)
@@ -57,10 +66,6 @@ int PreservationValidateReplayPolicy(
         {
             *route = PRESERVATION_REPLAY_ROUTE_MOBITEX;
         }
-        else
-        {
-            *route = PRESERVATION_REPLAY_ROUTE_ERMES;
-        }
     }
 
     return PRESERVATION_REPLAY_POLICY_OK;
@@ -80,6 +85,8 @@ const char *PreservationReplayPolicyError(int result)
             return "recording sample rate does not match PDW audio sample rate";
         case PRESERVATION_REPLAY_POLICY_CAPTURE_REQUIRED:
             return "PDW_PRESERVATION_CAPTURE must be set for decoder replay";
+        case PRESERVATION_REPLAY_POLICY_ERMES_AUDIO_UNSUPPORTED:
+            return "ERMES WAV replay is unsupported because current PDW live audio does not feed ERMES_To_Bits";
         default:
             return "unknown preservation replay policy error";
     }

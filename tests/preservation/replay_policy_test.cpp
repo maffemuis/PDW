@@ -73,12 +73,12 @@ int main()
         PRESERVATION_REPLAY_ROUTE_MOBITEX);
 
     failures += ExpectResult(
-        "ermes",
+        "ermes audio unsupported",
         0, 0, 0, 1,
         44100, 44100,
         "capture.jsonl",
-        PRESERVATION_REPLAY_POLICY_OK,
-        PRESERVATION_REPLAY_ROUTE_ERMES);
+        PRESERVATION_REPLAY_POLICY_ERMES_AUDIO_UNSUPPORTED,
+        PRESERVATION_REPLAY_ROUTE_NONE);
 
     failures += ExpectResult(
         "no mode",

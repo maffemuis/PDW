@@ -8,12 +8,13 @@ It is **opt-in** and does not replace normal WinMM audio capture unless `PDW_PRE
 
 The replay recording must be a mono, 8-bit PCM RIFF/WAVE file. Its sample rate must exactly match PDW's configured `Profile.audioSampleRate`.
 
-Exactly one decoder mode must be active:
+Exactly one decoder mode must be active. WAV replay currently supports:
 
 - POCSAG/FLEX paging;
 - ACARS;
-- MOBITEX;
-- ERMES.
+- MOBITEX.
+
+ERMES WAV replay is deliberately rejected. In the current legacy `sound_in.cpp`, the ERMES sound-card branch is commented out and there is no linked `ERMES_To_Bits()` implementation. Preservation replay mirrors that current behavior instead of inventing a new path.
 
 `PDW_PRESERVATION_CAPTURE` must also point to a JSONL output file. Replay refuses to run without capture enabled so a preservation run cannot silently discard its decoder output.
 
@@ -36,12 +37,11 @@ When replay mode is requested, PDW probes and validates the WAV before any sampl
 
 ## Routing
 
-Replay uses the same legacy functions as live audio:
+Replay uses the same legacy functions as current live audio:
 
 - paging -> `Audio_To_Bits()`;
 - ACARS -> `ACARS_To_Bits()`;
-- MOBITEX -> `MOBITEX_To_Bits()`;
-- ERMES -> `ERMES_To_Bits()`.
+- MOBITEX -> `MOBITEX_To_Bits()`.
 
 `Reset_ATB()` is called immediately before replay, mirroring the reset performed by normal audio startup.
 
