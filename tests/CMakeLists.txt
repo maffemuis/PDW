@@ -1,0 +1,13 @@
+add_executable( pdw_preservation_capture_test
+    preservation/capture_test.cpp
+    ${CMAKE_SOURCE_DIR}/utils/preservation_capture.cpp
+)
+
+target_include_directories( pdw_preservation_capture_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/utils
+)
+
+add_test(
+    NAME pdw_preservation_capture
+    COMMAND pdw_preservation_capture_test
+)

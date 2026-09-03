@@ -1,2 +1,6 @@
 .vs/
 .idea/
+
+# Preservation captures can contain sensitive received traffic.
+preservation-local/
+tests/preservation/private/

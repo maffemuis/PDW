@@ -4,6 +4,7 @@
 
 cmake_minimum_required( VERSION 3.5 )
 project( PDW )
+include( CTest )
 
 # Enforce Win32 (x86)
 if( CMAKE_SIZEOF_VOID_P EQUAL 8 )
@@ -61,6 +62,13 @@ set( PDW_SRCS
         sound_in.cpp
 )
 
+# Keep the legacy ShowMessage implementation untouched inside Misc.cpp.
+# Other translation units include misc.h and are routed through the
+# opt-in preservation observation wrapper.
+set_source_files_properties( Misc.cpp PROPERTIES
+        COMPILE_DEFINITIONS PDW_SHOWMESSAGE_IMPLEMENTATION
+)
+
 # Create executable
 add_executable( PDW WIN32
         ${PDW_INCLUDES}
@@ -78,3 +86,7 @@ target_link_libraries( PDW
         Crypt32.lib
         User32.lib
 )
+
+if( BUILD_TESTING )
+  add_subdirectory( tests )
+endif()

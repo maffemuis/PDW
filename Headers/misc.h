@@ -20,6 +20,7 @@ extern char Current_MSG[9][MAX_STR_LEN];	// PH: Buffer for all message items
 extern unsigned char message_buffer[MAX_STR_LEN+1];
 extern unsigned char mobitex_buffer[MAX_STR_LEN+1];
 extern BYTE messageitems_colors[7];			// buffer for message items colors
+extern int iMessageIndex;
 
 // Extra Globals used by display_show_char().
 extern char *dsc_pchar;
@@ -52,5 +53,13 @@ char *MakeFilterLabel(char *szLabel, char *szCapcode, char *szNewLabel);
 void CountBiterrors(int errors);
 //void Update_RX_Quality();
 void InvertData(void);
+
+// Route decoder-originated ShowMessage calls through the preservation
+// observation point. Misc.cpp is compiled with PDW_SHOWMESSAGE_IMPLEMENTATION
+// so the legacy implementation and its internal calls remain untouched.
+#ifndef PDW_SHOWMESSAGE_IMPLEMENTATION
+void PreservationShowMessage(void);
+#define ShowMessage PreservationShowMessage
+#endif
 
 #endif
