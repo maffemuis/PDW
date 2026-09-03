@@ -19,6 +19,49 @@ bool PreservationOneShotReplayRequested()
     return recording && recording[0]
         && one_shot && strcmp(one_shot, "1") == 0;
 }
+
+bool SelectPreservationProtocol()
+{
+    const char *protocol = getenv("PDW_PRESERVATION_PROTOCOL");
+
+    if (!protocol || !protocol[0] || strcmp(protocol, "paging") == 0)
+    {
+        Profile.monitor_paging = true;
+        Profile.monitor_acars = false;
+        Profile.monitor_mobitex = false;
+        Profile.monitor_ermes = false;
+        return true;
+    }
+
+    if (strcmp(protocol, "acars") == 0)
+    {
+        Profile.monitor_paging = false;
+        Profile.monitor_acars = true;
+        Profile.monitor_mobitex = false;
+        Profile.monitor_ermes = false;
+        return true;
+    }
+
+    if (strcmp(protocol, "mobitex") == 0)
+    {
+        Profile.monitor_paging = false;
+        Profile.monitor_acars = false;
+        Profile.monitor_mobitex = true;
+        Profile.monitor_ermes = false;
+        return true;
+    }
+
+    if (strcmp(protocol, "ermes") == 0)
+    {
+        Profile.monitor_paging = false;
+        Profile.monitor_acars = false;
+        Profile.monitor_mobitex = false;
+        Profile.monitor_ermes = true;
+        return true;
+    }
+
+    return false;
+}
 }
 
 BOOL NEAR InitApplication(HINSTANCE hInstance)
@@ -32,10 +75,18 @@ BOOL NEAR InitApplication(HINSTANCE hInstance)
     // defaults before calling InitApplication(). In one-shot preservation mode
     // replay immediately, before INI loading, window-class registration or any
     // other GUI startup work can block a headless CI runner.
+    //
+    // The optional preservation protocol selector only changes these headless
+    // replay monitor flags. Normal PDW startup never reads or applies it.
+    if (!SelectPreservationProtocol())
+    {
+        OutputDebugStringA("Unknown PDW_PRESERVATION_PROTOCOL; replay refused.");
+        ExitProcess(2);
+    }
 
-    // Legacy GUI startup normally initializes the POCSAG BCH/ECC lookup tables
-    // later during window creation. Headless one-shot replay bypasses that path,
-    // so initialize the same decoder state explicitly here.
+    // Legacy GUI startup normally initializes the POCSAG/FLEX BCH/ECC lookup
+    // tables later during window creation. Headless one-shot replay bypasses
+    // that path, so initialize the same decoder state explicitly here.
     setupecc();
 
     // Start_Capturing() terminates with exit 0/2 in one-shot replay mode.
