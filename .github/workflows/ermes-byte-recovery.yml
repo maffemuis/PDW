@@ -1,0 +1,27 @@
+name: ERMES byte recovery
+
+on:
+  push:
+    branches:
+      - modernization/ermes-byte-recovery
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Emit exact ERMES blob as base64
+        shell: python
+        run: |
+          import base64
+          import hashlib
+          from pathlib import Path
+
+          data = Path("ermes.cpp").read_bytes()
+          print(f"ERMES_SIZE={len(data)}")
+          print(f"ERMES_SHA256={hashlib.sha256(data).hexdigest()}")
+          encoded = base64.b64encode(data).decode("ascii")
+          for index in range(0, len(encoded), 2000):
+              print(f"ERMES_B64_{index // 2000:03d}={encoded[index:index + 2000]}")
