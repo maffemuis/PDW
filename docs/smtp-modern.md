@@ -2,6 +2,16 @@
 
 PDW now uses a modern SMTP transport while keeping the existing SMTP settings dialog and public `MailInit` / `SendMail` API.
 
+## Existing settings dialog
+
+No new mail-settings dialog is required for this transport slice. The existing fields remain compatible:
+
+- **SMTP server** and **Port** select the submission endpoint;
+- **SSL** now means that TLS is mandatory, not that certificate checks may be skipped;
+- **Enable Authentication** enables SMTP AUTH;
+- **Username** is the SMTP/OAuth identity;
+- **Password** remains usable for a legacy SMTP server that still permits AUTH LOGIN over TLS, but OAuth2 token-file configuration is preferred for modern providers.
+
 ## TLS behavior
 
 When the existing **SSL** option is enabled, TLS is mandatory:
