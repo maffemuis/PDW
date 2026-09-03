@@ -54,6 +54,14 @@ std::string BuildXOAuth2InitialResponse(const std::string &user, const std::stri
     return Base64Encode(sasl);
 }
 
+namespace
+{
+bool IsCapabilityTokenChar(unsigned char ch)
+{
+    return std::isalnum(ch) != 0 || ch == '-' || ch == '_';
+}
+}
+
 bool HasSmtpCapability(const std::string &capabilities, const char *needle)
 {
     if (!needle || !needle[0])
@@ -69,6 +77,43 @@ bool HasSmtpCapability(const std::string &capabilities, const char *needle)
     std::transform(target.begin(), target.end(), target.begin(),
         [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
 
-    return haystack.find(target) != std::string::npos;
+    size_t position = 0;
+    while ((position = haystack.find(target, position)) != std::string::npos)
+    {
+        const size_t end = position + target.size();
+        const bool left_boundary = position == 0
+            || !IsCapabilityTokenChar(static_cast<unsigned char>(haystack[position - 1]));
+        const bool right_boundary = end == haystack.size()
+            || !IsCapabilityTokenChar(static_cast<unsigned char>(haystack[end]));
+
+        if (left_boundary && right_boundary)
+        {
+            return true;
+        }
+        ++position;
+    }
+
+    return false;
+}
+
+std::string SanitizeSmtpHeaderValue(const std::string &value)
+{
+    std::string sanitized;
+    sanitized.reserve(value.size());
+
+    for (size_t i = 0; i < value.size(); ++i)
+    {
+        const unsigned char ch = static_cast<unsigned char>(value[i]);
+        if (ch < 0x20 || ch == 0x7f)
+        {
+            sanitized.push_back(' ');
+        }
+        else
+        {
+            sanitized.push_back(static_cast<char>(ch));
+        }
+    }
+
+    return sanitized;
 }
 }
