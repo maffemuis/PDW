@@ -18,7 +18,7 @@
 #include "utils\binary.h"
 #include "utils\smtp.h"
 
-#define FILTER_PARAM_LEN	500
+#define FILTER_PARAM_LEN	(MAX_STR_LEN - 1)
 #define MAXIMUM_GROUPSIZE	1000
 #define CAPCODES_INDEX		0
 
@@ -176,6 +176,16 @@ void display_show_str(PaneStruct *pane, char strin[])
 void display_show_strV2(PaneStruct *pane, char strin[])
 {
 	for (int x=0; ((strin[x] != 0) && (x < 256)); x++)
+	{
+		build_show_line(pane, strin[x], 0);
+	}
+}
+
+// Filter labels can be substantially longer than legacy pane fields. Keep the
+// wider limit local to labels so normal legacy field rendering stays unchanged.
+void display_show_filter_label(PaneStruct *pane, const char strin[])
+{
+	for (int x=0; ((strin[x] != 0) && (x < FILTER_LABEL_LEN)); x++)
 	{
 		build_show_line(pane, strin[x], 0);
 	}
@@ -1110,21 +1120,21 @@ void ShowMessage()
 				// PH: Get/show label in monitor pane
 				display_show_strV2(&Pane1, szLabelspacing);		// First, show the correct # of spaces
 				display_color(&Pane1, dwColor);
-				display_show_strV2(&Pane1, szCurrentLabel[0]);	// Show monitorlabel in Pane1
+				display_show_filter_label(&Pane1, szCurrentLabel[0]);	// Show monitorlabel in Pane1
 			}
 			else if (bFILTERED)
 			{
 				// PH: Get/show filterlabel in filter pane
 				display_show_strV2(&Pane2, szLabelspacing);		// First, show the correct # of spaces
 				display_color(&Pane2, dwColor);
-				display_show_strV2(&Pane2, szCurrentLabel[0]);	// Show filterlabel in Pane2
+				display_show_filter_label(&Pane2, szCurrentLabel[0]);	// Show filterlabel in Pane2
 			
 				if (Profile.LabelLog && bMONITOR)
 				{
 					// PH: Show filterlabel also in monitor pane
 					display_show_strV2(&Pane1, szLabelspacing);		// First, show the correct # of spaces
 					display_color(&Pane1, dwColor);
-					display_show_strV2(&Pane1, szCurrentLabel[0]);	// Show filterlabel in Pane1
+					display_show_filter_label(&Pane1, szCurrentLabel[0]);	// Show filterlabel in Pane1
 				}
 			}
 		}	// end of filter label
@@ -1943,7 +1953,7 @@ void ActivateCommandFile()
 
 	while (Profile.filter_cmd_args[i] != 0)
 	{
-		if ((i > 254) || (arg_pos > FILTER_PARAM_LEN)) break;
+		if ((i > 254) || (arg_pos >= FILTER_PARAM_LEN)) break;
 
 		if (Profile.filter_cmd_args[i] == '%')
 		{
@@ -1951,7 +1961,7 @@ void ActivateCommandFile()
 
 			if (arg>0 && arg<8)
 			{
-				for (pos=0; Current_MSG[arg][pos] != 0; pos++, arg_pos++)
+				for (pos=0; Current_MSG[arg][pos] != 0 && arg_pos < FILTER_PARAM_LEN; pos++, arg_pos++)
 				{
 					if (Profile.monitor_mobitex && (arg==7) && (Current_MSG[7][pos] == '"' || Current_MSG[7][pos] == '\''))
 					{
@@ -1965,7 +1975,7 @@ void ActivateCommandFile()
 			{
 				MakeFilterLabel(Profile.filters[iMatch].label, Current_MSG[MSG_CAPCODE], szLabel);
 				pos = 0;
-				while (szLabel[pos] != 0)
+				while (szLabel[pos] != 0 && arg_pos < FILTER_PARAM_LEN)
 				{
 					param_str[arg_pos++] = szLabel[pos++];
 				}
@@ -1976,7 +1986,7 @@ void ActivateCommandFile()
 			{
 				sprintf(tmp, "%02i", iCurrentCycle);
 				pos = 0;
-				while (tmp[pos] != 0)
+				while (tmp[pos] != 0 && arg_pos < FILTER_PARAM_LEN)
 				{
 					param_str[arg_pos++] = tmp[pos++];
 				}
@@ -1987,7 +1997,7 @@ void ActivateCommandFile()
 			{
 				sprintf(tmp, "%03i", iCurrentFrame);
 				pos = 0;
-				while (tmp[pos] != 0)
+				while (tmp[pos] != 0 && arg_pos < FILTER_PARAM_LEN)
 				{
 					param_str[arg_pos++] = tmp[pos++];
 				}
@@ -2062,14 +2072,9 @@ void ActivateCommandFile()
 	ZeroMemory(&si,sizeof(si));	//Zero the STARTUPINFO struct
 	si.cb = sizeof(si);			//Must set size of structure
 
-	strcpy(szCommandFile, Profile.filter_cmd);
-
-	if (param_str[0])
-	{
-		strcat(szCommandFile, " ");
-		strcat(szCommandFile, param_str);
-	}
-	if (strlen(szCommandFile) > MAX_STR_LEN) szCommandFile[MAX_STR_LEN] = 0;
+	_snprintf(szCommandFile, sizeof(szCommandFile)-1, "%s%s%s",
+		Profile.filter_cmd, param_str[0] ? " " : "", param_str);
+	szCommandFile[sizeof(szCommandFile)-1] = '\0';
 
 	CreateProcess(NULL, szCommandFile, NULL, NULL, FALSE, NULL, 0, NULL, &si, &pif);
 

@@ -6352,8 +6352,7 @@ void Copy_Filter_Fields(FILTER *out_filter, FILTER in_filter)
 void BuildFilterString(char *temp_str, FILTER filter)
 {
 	char *filter_types[7] = {"UNUSED", "FLEX","POCSAG","TEXT","ERMES ","ACARS ", "MOBITX"};
-	char *wave_names[11]  = {"Default","Sound-0","Sound-1","Sound-2","Sound-3","Sound-4",
-									   "Sound-5","Sound-6","Sound-7","Sound-8","Sound-9"};
+	char wave_name[32];
 
 	strcpy(temp_str, filter_types[filter.type]);
 
@@ -6399,7 +6398,19 @@ void BuildFilterString(char *temp_str, FILTER filter)
 		}
 		else
 		{
-			strcat(temp_str, filter.wave_number == -1 ? "NoSound" : wave_names[filter.wave_number]);
+			if (filter.wave_number == -1)
+			{
+				strcat(temp_str, "NoSound");
+			}
+			else if (filter.wave_number == 0)
+			{
+				strcat(temp_str, "Default");
+			}
+			else
+			{
+				sprintf(wave_name, "Sound-%i", filter.wave_number-1);
+				strcat(temp_str, wave_name);
+			}
 		}
 	}
 
@@ -7797,7 +7808,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 			if (!filter.monitor_only)	// If all selected filters =! Monitor-Only
 			{
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "Default");
-				for (i=0; i<10; i++)
+				for (i=0; i<FILTER_SOUND_COUNT; i++)
 				{
 					sprintf(temp, "Sound%i.wav", i);
 					SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) temp);
@@ -7813,7 +7824,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 										// audio == BST_INDETERMINATE
 			{
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM)(LPCTSTR) "Don't change");
-				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) filter.monitor_only ? 2 : 12, 0L);
+				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) (filter.monitor_only ? 2 : FILTER_SOUND_COUNT + 2), 0L);
 			}
 		}
 		else EnableWindow(GetDlgItem(hDlg, IDC_FILTERAUDIO), FALSE); // If Monitor-Only == BST_INDETERMINATE
@@ -8066,7 +8077,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "No sound");
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "Default");
 
-				for (i=0; i<11; i++)
+				for (i=0; i<FILTER_SOUND_COUNT; i++)
 				{
 					sprintf(temp, "Sound%i.wav", i);
 					SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) temp);
@@ -8075,7 +8086,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 			if (multiple_edit)
 			{
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM)(LPCTSTR) "Don't change");
-				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) monitor_only ? 2 : 12, 0L);
+				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) (monitor_only ? 2 : FILTER_SOUND_COUNT + 2), 0L);
 			}
 			else SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) 1, 0L);
 
@@ -8437,7 +8448,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 					{
 						Profile.filters[index].monitor_only = IsDlgButtonChecked(hDlg, IDC_FILTER_MONITOR_ONLY);
 
-						if (SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_GETCURSEL, 0, 0L) != (Profile.filters[index].monitor_only ? 2 : 12))
+						if (SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_GETCURSEL, 0, 0L) != (Profile.filters[index].monitor_only ? 2 : FILTER_SOUND_COUNT + 2))
 						{
 							Profile.filters[index].wave_number = SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_GETCURSEL, 0, 0L);
 							if (!Profile.filters[index].monitor_only) Profile.filters[index].wave_number -= 1;
@@ -9802,9 +9813,24 @@ bool ReadFilters(char *szFilters, PPROFILE pProfile, bool bNew)
 
 							if (szLine[pos+1] != '"')
 							{
-								strncpy(filter.label, &szLine[pos+1], strlen(szLine));
-								filter.label[strchr(filter.label, '"') - filter.label] = 0;
-								pos += strlen(filter.label) + 1;	// + 1 to start at last "
+								const char *label_start = &szLine[pos+1];
+								const char *label_end = strchr(label_start, '"');
+								if (!label_end)
+								{
+									bError = true;
+									break;
+								}
+
+								const size_t label_len = static_cast<size_t>(label_end - label_start);
+								if (label_len > FILTER_LABEL_LEN)
+								{
+									bError = true;
+									break;
+								}
+
+								memcpy(filter.label, label_start, label_len);
+								filter.label[label_len] = 0;
+								pos = static_cast<int>(label_end - szLine);
 							}
 							else filter.label[0] = 0;
 
@@ -10132,7 +10158,7 @@ void WriteSettings()
 
 void WriteFilters(PPROFILE pProfile, int backup)
 {
-	char szLine[256];
+	char szLine[MAX_STR_LEN];
 	char szFilename[MAX_PATH];
 	char szPathname[MAX_PATH];
 	char ext[10];
