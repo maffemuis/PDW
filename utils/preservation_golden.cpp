@@ -20,6 +20,27 @@ void SetError(char *error, size_t error_size, const char *text)
     snprintf(error, error_size, "%s", text);
     error[error_size - 1] = '\0';
 }
+
+int ReadNormalizedByte(FILE *file)
+{
+    const int value = fgetc(file);
+    if (value != '\r')
+    {
+        return value;
+    }
+
+    const int next = fgetc(file);
+    if (next == '\n')
+    {
+        return '\n';
+    }
+
+    if (next != EOF)
+    {
+        ungetc(next, file);
+    }
+    return '\r';
+}
 }
 
 int PreservationCompareGoldenFiles(
@@ -54,8 +75,8 @@ int PreservationCompareGoldenFiles(
 
     for (;;)
     {
-        const int expected_byte = fgetc(expected);
-        const int actual_byte = fgetc(actual);
+        const int expected_byte = ReadNormalizedByte(expected);
+        const int actual_byte = ReadNormalizedByte(actual);
 
         if (expected_byte != actual_byte)
         {
