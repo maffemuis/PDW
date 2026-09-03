@@ -77,7 +77,22 @@ if(PDW_PRESERVATION_PYTHON)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/preservation/run_mobitex.cmake
     )
 
-    set_tests_properties(pdw_preservation_mobitex_basic PROPERTIES TIMEOUT 40)
+    add_test(
+        NAME pdw_preservation_ermes_tone
+        COMMAND ${CMAKE_COMMAND}
+            -DPDW_EXECUTABLE=$<TARGET_FILE:PDW>
+            -DCOMPARE_EXECUTABLE=$<TARGET_FILE:pdw_preservation_compare>
+            -DPYTHON_EXECUTABLE=${PDW_PRESERVATION_PYTHON}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DOUTPUT_DIR=${CMAKE_BINARY_DIR}/preservation-ermes
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/preservation/run_ermes.cmake
+    )
+
+    set_tests_properties(
+        pdw_preservation_mobitex_basic
+        pdw_preservation_ermes_tone
+        PROPERTIES TIMEOUT 40
+    )
 else()
-    message(WARNING "Python was not found; MOBITEX preservation replay test is unavailable")
+    message(WARNING "Python was not found; protocol preservation replay tests are unavailable")
 endif()
