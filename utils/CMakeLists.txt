@@ -16,6 +16,7 @@ set( PDW_INCLUDES
   ${CMAKE_CURRENT_SOURCE_DIR}/rs232.h
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp.h
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_int.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.h
   
   PARENT_SCOPE
 )
@@ -35,7 +36,8 @@ set( PDW_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/preservation_showmessage.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/preservation_wav.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/rs232.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/smtp.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/smtp_modern.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.cpp
   
   PARENT_SCOPE
 )
