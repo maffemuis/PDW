@@ -29,7 +29,7 @@ set( PDW_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/preservation_capture.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/preservation_decoder_replay.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/preservation_decoder_replay_policy.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/preservation_initinstance.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/preservation_initapplication.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/preservation_showmessage.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/preservation_wav.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/rs232.cpp

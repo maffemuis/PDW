@@ -7,7 +7,7 @@
 #include "..\Headers\initapp.h"
 #include "..\Headers\sound_in.h"
 
-HWND NEAR LegacyInitInstance(HINSTANCE hInstance, int nCmdShow);
+BOOL NEAR LegacyInitApplication(HINSTANCE hInstance);
 
 namespace
 {
@@ -21,22 +21,21 @@ bool PreservationOneShotReplayRequested()
 }
 }
 
-HWND NEAR InitInstance(HINSTANCE hInstance, int nCmdShow)
+BOOL NEAR InitApplication(HINSTANCE hInstance)
 {
-    HWND hwnd = LegacyInitInstance(hInstance, nCmdShow);
-
-    if (!hwnd || !PreservationOneShotReplayRequested())
+    if (!PreservationOneShotReplayRequested())
     {
-        return hwnd;
+        return LegacyInitApplication(hInstance);
     }
 
-    // The profile has already been loaded by InitApplication and the legacy
-    // window/panes now exist. Run one-shot preservation before unrelated
-    // legacy startup work (database reads, COM discovery, timers, message loop).
+    // WinMain has already initialized PDW's deterministic built-in Profile
+    // defaults before calling InitApplication(). In one-shot preservation mode
+    // replay immediately, before INI loading, window-class registration or any
+    // other GUI startup work can block a headless CI runner.
     // Start_Capturing() terminates with exit 0/2 in one-shot replay mode.
     Start_Capturing();
 
-    // One-shot replay must never fall through into the GUI runtime.
+    // A one-shot preservation run must never fall through into GUI startup.
     ExitProcess(3);
-    return hwnd;
+    return FALSE;
 }
