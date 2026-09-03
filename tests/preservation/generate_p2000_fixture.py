@@ -20,14 +20,17 @@ SAMPLE_RATE = 44100
 BAUD_RATE = 1200
 CAPCODE = 123456
 FUNCTION_BITS = 0x3
+NUMERIC_ALPHABET = "0123456789*U -]["
 
 CASES = {
     "short-alpha": {
+        "kind": "alpha",
         "message": "BRANDWEER TEST",
         "address_error_mask": 0x0,
         "sha256": "b8426b5bad113fd8710fc261385851e6005917eab7401093b6e7087042f82a39",
     },
     "short-alpha-divisor": {
+        "kind": "alpha",
         # Five message words again, but unlike the original short-alpha fixture
         # the legacy %6 remainder window starts with a one while the proper %7
         # trailing remainder is 00. This makes the old classifier observably
@@ -36,7 +39,18 @@ CASES = {
         "address_error_mask": 0x0,
         "sha256": "841a9c76d5c7defb1ea3da6334fcf950727d78f10e42476ab6e4277bebf6082c",
     },
+    "numeric-binary-remainder": {
+        "kind": "numeric",
+        # One numeric message word whose alpha remainder window is 0,1,1,0,0,1.
+        # The legacy strncpy/strchr code treats the first binary zero as a C
+        # string terminator and therefore misses the later one-bits, allowing
+        # the otherwise plausible alpha interpretation "MP" to win.
+        "message": "-48*9",
+        "address_error_mask": 0x0,
+        "sha256": "f1612baa84925805fecdbbcedbf69e04663b8cbba9f985e3f1a74ccb163100d3",
+    },
     "bad-address": {
+        "kind": "alpha",
         "message": "BRANDWEER TEST",
         # Flip three BCH check bits only. Syndrome 0x007 has no entry in
         # PDW's one/two-bit correction table, so ecd() deterministically
@@ -71,11 +85,7 @@ def encode_codeword(info: int) -> int:
     return (with_crc << 1) | parity(with_crc)
 
 
-def encode_alpha(text: str) -> list[int]:
-    payload_bits: list[int] = []
-    for char in text.encode("ascii"):
-        payload_bits.extend((char >> bit) & 1 for bit in range(7))
-
+def payload_codewords(payload_bits: list[int]) -> list[int]:
     codewords: list[int] = []
     for offset in range(0, len(payload_bits), 20):
         chunk = payload_bits[offset : offset + 20]
@@ -87,6 +97,21 @@ def encode_alpha(text: str) -> list[int]:
     return codewords
 
 
+def encode_alpha(text: str) -> list[int]:
+    payload_bits: list[int] = []
+    for char in text.encode("ascii"):
+        payload_bits.extend((char >> bit) & 1 for bit in range(7))
+    return payload_codewords(payload_bits)
+
+
+def encode_numeric(text: str) -> list[int]:
+    payload_bits: list[int] = []
+    for char in text:
+        value = NUMERIC_ALPHABET.index(char)
+        payload_bits.extend((value >> bit) & 1 for bit in range(4))
+    return payload_codewords(payload_bits)
+
+
 def word_bits(word: int) -> list[int]:
     return [(word >> (31 - bit)) & 1 for bit in range(32)]
 
@@ -96,8 +121,18 @@ def build_bits(case_name: str) -> list[int]:
     assert CAPCODE & 0x7 == 0
     address_info = ((CAPCODE >> 3) << 2) | FUNCTION_BITS
     address_word = encode_codeword(address_info) ^ int(case["address_error_mask"])
-    message_words = encode_alpha(str(case["message"]))
-    assert len(message_words) == 5, "fixture must stay on the five-codeword edge case"
+
+    if case["kind"] == "alpha":
+        message_words = encode_alpha(str(case["message"]))
+    elif case["kind"] == "numeric":
+        message_words = encode_numeric(str(case["message"]))
+    else:
+        raise ValueError(f"unsupported fixture kind: {case['kind']}")
+
+    if case_name in {"short-alpha", "short-alpha-divisor", "bad-address"}:
+        assert len(message_words) == 5, "fixture must stay on the five-codeword edge case"
+    elif case_name == "numeric-binary-remainder":
+        assert message_words == [0xD90ACBA6]
 
     batch = [address_word, *message_words]
     batch.extend([IDLE] * (16 - len(batch)))
@@ -135,7 +170,7 @@ def main() -> int:
     if len(sys.argv) not in (2, 3):
         print(
             f"usage: {Path(sys.argv[0]).name} OUTPUT.wav "
-            "[short-alpha|short-alpha-divisor|bad-address]",
+            "[short-alpha|short-alpha-divisor|numeric-binary-remainder|bad-address]",
             file=sys.stderr,
         )
         return 2
