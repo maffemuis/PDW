@@ -62,9 +62,9 @@ void WriteField(FILE *file, const char *name, const char *value, size_t max_byte
     fputs("\":", file);
     WriteJsonString(file, value, max_bytes);
 }
-}
 
-void PreservationCaptureMessage(
+void WriteFullCapture(
+    const char *path,
     const char *capcode,
     const char *time,
     const char *date,
@@ -75,8 +75,6 @@ void PreservationCaptureMessage(
     const char *mobitex,
     size_t max_field_bytes)
 {
-    const char *path = getenv("PDW_PRESERVATION_CAPTURE");
-
     if (!path || !path[0])
     {
         return;
@@ -101,4 +99,82 @@ void PreservationCaptureMessage(
     fputs("}\n", file);
 
     fclose(file);
+}
+
+void WriteGoldenCapture(
+    const char *path,
+    const char *capcode,
+    const char *mode,
+    const char *type,
+    const char *bitrate,
+    const char *message,
+    const char *mobitex,
+    size_t max_field_bytes)
+{
+    if (!path || !path[0])
+    {
+        return;
+    }
+
+    FILE *file = fopen(path, "ab");
+    if (!file)
+    {
+        return;
+    }
+
+    fputs("{\"schema\":\"pdw-golden-v1\"", file);
+    fputs(",\"capture_point\":\"decoder_to_showmessage\"", file);
+    WriteField(file, "capcode", capcode, max_field_bytes);
+    WriteField(file, "mode", mode, max_field_bytes);
+    WriteField(file, "type", type, max_field_bytes);
+    WriteField(file, "bitrate", bitrate, max_field_bytes);
+    WriteField(file, "message", message, max_field_bytes);
+    WriteField(file, "mobitex", mobitex, max_field_bytes);
+    fputs("}\n", file);
+
+    fclose(file);
+}
+}
+
+void PreservationCaptureMessage(
+    const char *capcode,
+    const char *time,
+    const char *date,
+    const char *mode,
+    const char *type,
+    const char *bitrate,
+    const char *message,
+    const char *mobitex,
+    size_t max_field_bytes)
+{
+    const char *capture_path = getenv("PDW_PRESERVATION_CAPTURE");
+    const char *golden_path = getenv("PDW_PRESERVATION_GOLDEN_CAPTURE");
+
+    if ((!capture_path || !capture_path[0])
+        && (!golden_path || !golden_path[0]))
+    {
+        return;
+    }
+
+    WriteFullCapture(
+        capture_path,
+        capcode,
+        time,
+        date,
+        mode,
+        type,
+        bitrate,
+        message,
+        mobitex,
+        max_field_bytes);
+
+    WriteGoldenCapture(
+        golden_path,
+        capcode,
+        mode,
+        type,
+        bitrate,
+        message,
+        mobitex,
+        max_field_bytes);
 }

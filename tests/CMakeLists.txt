@@ -39,3 +39,26 @@ add_test(
     NAME pdw_preservation_replay_policy
     COMMAND pdw_preservation_replay_policy_test
 )
+
+add_executable( pdw_preservation_golden_test
+    preservation/golden_test.cpp
+    ${CMAKE_SOURCE_DIR}/utils/preservation_golden.cpp
+)
+
+target_include_directories( pdw_preservation_golden_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/utils
+)
+
+add_test(
+    NAME pdw_preservation_golden
+    COMMAND pdw_preservation_golden_test
+)
+
+add_executable( pdw_preservation_compare
+    preservation/golden_compare_main.cpp
+    ${CMAKE_SOURCE_DIR}/utils/preservation_golden.cpp
+)
+
+target_include_directories( pdw_preservation_compare PRIVATE
+    ${CMAKE_SOURCE_DIR}/utils
+)
