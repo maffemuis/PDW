@@ -76,6 +76,13 @@ set_source_files_properties( sound_in.cpp PROPERTIES
         COMPILE_DEFINITIONS "Start_Capturing=LegacyStart_Capturing"
 )
 
+# Likewise keep the legacy InitInstance implementation intact. A very small
+# wrapper starts CI one-shot replay immediately after profile/window init,
+# before unrelated legacy startup work can interfere with unattended tests.
+set_source_files_properties( Initapp.cpp PROPERTIES
+        COMPILE_DEFINITIONS "InitInstance=LegacyInitInstance"
+)
+
 # Create executable
 add_executable( PDW WIN32
         ${PDW_INCLUDES}
