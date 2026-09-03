@@ -284,8 +284,6 @@ void POCSAG::show_addr(bool bAlpha)
 		break;
 	}
 
-	pocaddr = pocaddr & 0x1fffffl;
-
 	if (pocaddr > 0x3fffffl)	// If error in capcode don`t display it.
 	{
 		strcpy(Current_MSG[MSG_CAPCODE], "???????");
@@ -297,6 +295,8 @@ void POCSAG::show_addr(bool bAlpha)
 		sprintf(Current_MSG[MSG_CAPCODE], "%07li", pocaddr);				// Add capcode
 		CountBiterrors(0);
 	}
+
+	pocaddr = pocaddr & 0x1fffffl;
 
 	/* Show Capcode */
 	
