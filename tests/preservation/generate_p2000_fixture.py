@@ -20,14 +20,24 @@ SAMPLE_RATE = 44100
 BAUD_RATE = 1200
 CAPCODE = 123456
 FUNCTION_BITS = 0x3
-MESSAGE = "BRANDWEER TEST"
 
 CASES = {
     "short-alpha": {
+        "message": "BRANDWEER TEST",
         "address_error_mask": 0x0,
         "sha256": "b8426b5bad113fd8710fc261385851e6005917eab7401093b6e7087042f82a39",
     },
+    "short-alpha-divisor": {
+        # Five message words again, but unlike the original short-alpha fixture
+        # the legacy %6 remainder window starts with a one while the proper %7
+        # trailing remainder is 00. This makes the old classifier observably
+        # choose NUMERIC instead of ALPHA.
+        "message": "BRANDWEER 1234",
+        "address_error_mask": 0x0,
+        "sha256": "841a9c76d5c7defb1ea3da6334fcf950727d78f10e42476ab6e4277bebf6082c",
+    },
     "bad-address": {
+        "message": "BRANDWEER TEST",
         # Flip three BCH check bits only. Syndrome 0x007 has no entry in
         # PDW's one/two-bit correction table, so ecd() deterministically
         # reports this address word as uncorrectable while leaving its
@@ -86,7 +96,7 @@ def build_bits(case_name: str) -> list[int]:
     assert CAPCODE & 0x7 == 0
     address_info = ((CAPCODE >> 3) << 2) | FUNCTION_BITS
     address_word = encode_codeword(address_info) ^ int(case["address_error_mask"])
-    message_words = encode_alpha(MESSAGE)
+    message_words = encode_alpha(str(case["message"]))
     assert len(message_words) == 5, "fixture must stay on the five-codeword edge case"
 
     batch = [address_word, *message_words]
@@ -124,7 +134,8 @@ def make_wav(pcm: bytes) -> bytes:
 def main() -> int:
     if len(sys.argv) not in (2, 3):
         print(
-            f"usage: {Path(sys.argv[0]).name} OUTPUT.wav [short-alpha|bad-address]",
+            f"usage: {Path(sys.argv[0]).name} OUTPUT.wav "
+            "[short-alpha|short-alpha-divisor|bad-address]",
             file=sys.stderr,
         )
         return 2
