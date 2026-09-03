@@ -736,7 +736,7 @@ bool SendEnvelopeAndData(Transport &transport, const MailConfig &config, const s
     std::string message;
     if (config.options & MAIL_OPTION_SUBJECT)
     {
-        message += "Subject: " + subject + "\r\n";
+        message += "Subject: " + pdw::SanitizeSmtpHeaderValue(subject) + "\r\n";
     }
     message += "From: " + config.from + "\r\n";
     message += "To: " + config.to + "\r\n";
