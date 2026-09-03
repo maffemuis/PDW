@@ -9,7 +9,7 @@ def replace_once(text, old, new, label):
 
 
 header_path = Path("Headers/pdw.h")
-header = header_path.read_text(encoding="utf-8")
+header = header_path.read_text(encoding="latin-1")
 header = replace_once(
     header,
     "#define FILTER_LABEL_LEN    256\t// was 70, see issue #21",
@@ -22,10 +22,10 @@ header = replace_once(
     "#define FILTER_FILE_LEN     128\t// PH: was 256\n#define FILTER_SOUND_COUNT  100\t// Sound0.wav through Sound99.wav",
     "FILTER_SOUND_COUNT insertion",
 )
-header_path.write_text(header, encoding="utf-8")
+header_path.write_text(header, encoding="latin-1")
 
 pdw_path = Path("PDW.cpp")
-pdw = pdw_path.read_text(encoding="utf-8")
+pdw = pdw_path.read_text(encoding="latin-1")
 old_wave_decl = (
     '\tchar *wave_names[11]  = {"Default","Sound-0","Sound-1","Sound-2","Sound-3","Sound-4",\n'
     '\t\t\t\t\t\t\t\t\t   "Sound-5","Sound-6","Sound-7","Sound-8","Sound-9"};'
@@ -100,10 +100,10 @@ new_label_block = '''\t\t\t\t\t\t\tcase FILTER_LABEL:\t\t\t// Get label
 
 '''
 pdw = pdw[:label_start] + new_label_block + pdw[label_end:]
-pdw_path.write_text(pdw, encoding="utf-8")
+pdw_path.write_text(pdw, encoding="latin-1")
 
 misc_path = Path("Misc.cpp")
-misc = misc_path.read_text(encoding="utf-8")
+misc = misc_path.read_text(encoding="latin-1")
 misc = replace_once(
     misc,
     "#define FILTER_PARAM_LEN\t500",
@@ -170,7 +170,7 @@ new_command = '''\t_snprintf(szCommandFile, sizeof(szCommandFile)-1, "%s%s%s",
 \t\tProfile.filter_cmd, param_str[0] ? " " : "", param_str);
 \tszCommandFile[sizeof(szCommandFile)-1] = '\\0';'''
 misc = replace_once(misc, old_command, new_command, "command line bounded construction")
-misc_path.write_text(misc, encoding="utf-8")
+misc_path.write_text(misc, encoding="latin-1")
 
 assert "FILTER_LABEL_LEN    1024" in header
 assert "FILTER_SOUND_COUNT  100" in header
