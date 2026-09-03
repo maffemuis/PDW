@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Generate the first privacy-safe PDW POCSAG preservation fixture.
+"""Generate privacy-safe PDW POCSAG preservation fixtures.
 
-The fixture is entirely synthetic. It represents one POCSAG-1200 alpha page:
+The fixture is entirely synthetic. It represents one alpha page at a selected
+standard POCSAG baud rate:
 
     capcode: 123456
     function: 4
@@ -22,11 +23,14 @@ IDLE = 0x7A89C197
 CRC_GENERATOR = 0x769
 PREAMBLE_BITS = 576
 SAMPLE_RATE = 44100
-BAUD_RATE = 1200
 CAPCODE = 123456
 FUNCTION_BITS = 0x3
 MESSAGE = "PDW PRESERVATION OK!"
-EXPECTED_SHA256 = "9800babd1d2f789a95d1622be3ad47aa9e9fc8597c5a254b9a29bb54514ada70"
+EXPECTED_SHA256 = {
+    512: "b2609f893c1b73155678a551f83a431be931a1c4fc747eefcb78afd863471584",
+    1200: "9800babd1d2f789a95d1622be3ad47aa9e9fc8597c5a254b9a29bb54514ada70",
+    2400: "a46529d11fd769b78f8710d2bfbfe315089e5f812aeb1ce34171e4562c163db3",
+}
 
 
 def crc21(info: int) -> int:
@@ -112,12 +116,12 @@ def build_transmission_bits() -> list[int]:
     return bits
 
 
-def build_pcm(bits: list[int]) -> bytes:
-    sample_count = (len(bits) * SAMPLE_RATE + BAUD_RATE - 1) // BAUD_RATE
+def build_pcm(bits: list[int], baud_rate: int) -> bytes:
+    sample_count = (len(bits) * SAMPLE_RATE + baud_rate - 1) // baud_rate
     samples = bytearray(sample_count)
 
     for sample_index in range(sample_count):
-        bit_index = min((sample_index * BAUD_RATE) // SAMPLE_RATE, len(bits) - 1)
+        bit_index = min((sample_index * baud_rate) // SAMPLE_RATE, len(bits) - 1)
         # PDW's legacy Audio_To_Bits() XORs unsigned 8-bit PCM with 0x80.
         # Use full-scale values for an intentionally unambiguous synthetic signal.
         samples[sample_index] = 0xFF if bits[bit_index] else 0x00
@@ -139,21 +143,28 @@ def make_wav(pcm: bytes) -> bytes:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print(f"usage: {Path(sys.argv[0]).name} OUTPUT.wav", file=sys.stderr)
+    if len(sys.argv) not in (2, 3):
+        print(f"usage: {Path(sys.argv[0]).name} OUTPUT.wav [512|1200|2400]", file=sys.stderr)
         return 2
 
     output = Path(sys.argv[1])
+    baud_rate = int(sys.argv[2]) if len(sys.argv) == 3 else 1200
+    if baud_rate not in EXPECTED_SHA256:
+        print(f"unsupported POCSAG baud rate: {baud_rate}", file=sys.stderr)
+        return 2
+
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    wav = make_wav(build_pcm(build_transmission_bits()))
+    wav = make_wav(build_pcm(build_transmission_bits(), baud_rate))
     digest = hashlib.sha256(wav).hexdigest()
-    if digest != EXPECTED_SHA256:
+    if digest != EXPECTED_SHA256[baud_rate]:
         print(f"fixture SHA-256 mismatch: {digest}", file=sys.stderr)
         return 3
 
     output.write_bytes(wav)
-    print(f"generated {output} ({len(wav)} bytes, sha256={digest})")
+    print(
+        f"generated {output} ({len(wav)} bytes, baud={baud_rate}, sha256={digest})"
+    )
     return 0
 
 
