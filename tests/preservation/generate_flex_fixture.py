@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Generate a privacy-safe synthetic FLEX-1600 tone-only preservation WAV.
+"""Generate privacy-safe synthetic FLEX-1600 preservation WAVs.
 
-The waveform is built from fixed protocol fields only. It contains no
-received/off-air pager traffic. The layout is deliberately minimal: FLEX-1600
-2-level sync, one valid cycle-information codeword, one BIW, one short address,
-one SH/TONE vector and deterministic filler until PDW can terminate the frame.
+Every waveform is built from fixed protocol fields only. No received/off-air
+pager traffic is used. The fixtures exercise the real legacy 44.1 kHz audio
+slicer, FLEX sync, BCH/ECC, interleaving and message formatting paths.
 """
 
 from __future__ import annotations
@@ -20,12 +19,13 @@ CRC_GENERATOR = 0x769
 CAPCODE = 123456
 
 SYNC_WORDS = (0x870C, 0xA6C6, 0xAAAA, 0x78F3)
-EXPECTED_SHA256 = "b1af5b7ee1d04dd6636d8c1ddac7a86ec35f70fec0360361c9f0679e5f879c9a"
+EXPECTED_SHA256 = {
+    "tone": "b1af5b7ee1d04dd6636d8c1ddac7a86ec35f70fec0360361c9f0679e5f879c9a",
+    "alpha": "f58f41f0582f779ecaf2a74a12fc580983d5d1f22862b036bc896ae0a4416e5a",
+}
+ALPHA_MESSAGE = "FLEX GOLDEN OK!"
 
-# Values as PDW stores them in FLEX::frame[] after deinterleaving/ECC.
-# BIW: address field starts at word 1, vector field at word 2.
-# Vector: mode 2 (SH/TONE), tone subtype 1.
-FRAME_WORDS = [
+TONE_FRAME_WORDS = [
     0x000807,
     CAPCODE + 32768,
     0x0000A5,
@@ -35,6 +35,30 @@ FRAME_WORDS = [
     0x153333,
     0x152222,
     0x15DDDD,
+    0x15CCCC,
+    0x15FFFF,
+    0x15EEEE,
+    0x159999,
+    0x158888,
+    0x15BBBB,
+    0x000000,
+]
+
+
+def pack_alpha_word(text: str) -> int:
+    assert len(text) == 3
+    return ord(text[0]) | (ord(text[1]) << 7) | (ord(text[2]) << 14)
+
+
+ALPHA_FRAME_WORDS = [
+    0x000807,                 # BIW: asa=1, vsa=2
+    CAPCODE + 32768,          # short address
+    0x0181D8,                 # ALPHA vector: header at 3, six words total
+    0x001800,                 # fragment header, fragment number 3
+    *[
+        pack_alpha_word(ALPHA_MESSAGE[index:index + 3])
+        for index in range(0, len(ALPHA_MESSAGE), 3)
+    ],
     0x15CCCC,
     0x15FFFF,
     0x15EEEE,
@@ -108,20 +132,43 @@ def interleave_block(values: list[int]) -> list[int]:
     return [encoded[word][bit] for bit in range(32) for word in range(8)]
 
 
-def build_bits() -> list[int]:
-    assert len(FRAME_WORDS) == 16
-    assert FRAME_WORDS[1] == 0x026240
-    assert xsum(FRAME_WORDS[0]) == 0xF
-    assert ((FRAME_WORDS[0] >> 8) & 0x3) + 1 == 1
-    assert ((FRAME_WORDS[0] >> 10) & 0x3F) == 2
-    assert xsum(FRAME_WORDS[2]) == 0xF
-    assert ((FRAME_WORDS[2] >> 4) & 0x7) == 2
-    assert ((FRAME_WORDS[2] >> 7) & 0x3) == 1
+def frame_words(kind: str) -> list[int]:
+    if kind == "tone":
+        return list(TONE_FRAME_WORDS)
+    if kind == "alpha":
+        return list(ALPHA_FRAME_WORDS)
+    raise ValueError(f"unsupported FLEX fixture kind: {kind}")
 
-    first_three = [
-        encode_codeword(flex_wire_info(value)) for value in FRAME_WORDS[:3]
-    ]
-    assert first_three == [0x1FEFFD67, 0xFDB9BCA2, 0x5AFFFE67]
+
+def validate_frame_words(kind: str, words: list[int]) -> None:
+    assert len(words) == 16
+    assert words[1] == 0x026240
+    assert xsum(words[0]) == 0xF
+    assert ((words[0] >> 8) & 0x3) + 1 == 1
+    assert ((words[0] >> 10) & 0x3F) == 2
+    assert xsum(words[2]) == 0xF
+
+    if kind == "tone":
+        assert ((words[2] >> 4) & 0x7) == 2
+        assert ((words[2] >> 7) & 0x3) == 1
+        first = [encode_codeword(flex_wire_info(value)) for value in words[:3]]
+        assert first == [0x1FEFFD67, 0xFDB9BCA2, 0x5AFFFE67]
+        return
+
+    assert kind == "alpha"
+    assert len(ALPHA_MESSAGE) == 15
+    assert ((words[2] >> 4) & 0x7) == 5
+    assert ((words[2] >> 7) & 0x7F) == 3
+    assert ((words[2] >> 14) & 0x7F) == 6
+    assert ((words[3] >> 11) & 0x3) == 3
+    assert words[4:9] == [0x116646, 0x11D058, 0x11264F, 0x082745, 0x0865CF]
+    first = [encode_codeword(flex_wire_info(value)) for value in words[:4]]
+    assert first == [0x1FEFFD67, 0xFDB9BCA2, 0xE47E7A08, 0xFFE7FCC6]
+
+
+def build_bits(kind: str) -> list[int]:
+    words = frame_words(kind)
+    validate_frame_words(kind, words)
 
     # Give the legacy 1600-baud slicer a clean clock before the 64-bit sync.
     preamble = [1 if bit % 2 == 0 else 0 for bit in range(128)]
@@ -134,15 +181,13 @@ def build_bits() -> list[int]:
     assert cycle_info == [1] * 32
     holdoff_after_cycle = [1 if bit % 2 == 0 else 0 for bit in range(40)]
 
-    data = interleave_block(FRAME_WORDS[:8])
-    data += interleave_block(FRAME_WORDS[8:])
+    data = interleave_block(words[:8])
+    data += interleave_block(words[8:])
     assert len(data) == 512
 
-    # The 44.1 kHz legacy slicer emits the final recognized sync symbol one
-    # sample-clock later than the idealized bit model. One alternating pad
-    # symbol is therefore consumed at the sync-to-data boundary. Keeping that
-    # behavior explicit makes the fixture reproduce what the real PDW audio
-    # path sees instead of bypassing or modifying the decoder.
+    # The 44.1 kHz legacy slicer consumes one transition symbol at the
+    # recognized sync-to-data boundary. Keep that real audio-path behavior
+    # explicit instead of bypassing or modifying the decoder.
     alignment_pad = [1]
 
     return (
@@ -182,24 +227,30 @@ def make_wav(pcm: bytes) -> bytes:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print(f"usage: {Path(sys.argv[0]).name} OUTPUT.wav", file=sys.stderr)
+    if len(sys.argv) not in (2, 3):
+        print(f"usage: {Path(sys.argv[0]).name} OUTPUT.wav [tone|alpha]", file=sys.stderr)
         return 2
 
     output = Path(sys.argv[1])
+    kind = sys.argv[2].lower() if len(sys.argv) == 3 else "tone"
+
+    if kind not in EXPECTED_SHA256:
+        print(f"unsupported FLEX fixture kind: {kind}", file=sys.stderr)
+        return 2
+
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    bits = build_bits()
+    bits = build_bits(kind)
     assert len(bits) == 793
     wav = make_wav(build_pcm(bits))
     digest = hashlib.sha256(wav).hexdigest()
 
-    if digest != EXPECTED_SHA256:
+    if digest != EXPECTED_SHA256[kind]:
         print(f"fixture SHA-256 mismatch: {digest}", file=sys.stderr)
         return 3
 
     output.write_bytes(wav)
-    print(f"generated {output} ({len(wav)} bytes, sha256={digest})")
+    print(f"generated {output} ({len(wav)} bytes, kind={kind}, sha256={digest})")
     return 0
 
 
