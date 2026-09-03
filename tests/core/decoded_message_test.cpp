@@ -28,7 +28,8 @@ int main()
     message.mode = "FLEX-A";
     message.type = " ALPHA ";
     message.bitrate = "1600";
-    message.text.assign("A\x17B", 3);
+    const char raw_text[] = {'A', 0x17, 'B'};
+    message.text.assign(raw_text, 3);
     message.auxiliary = "meta";
 
     if (std::string(pdw::DecodedProtocolName(message.protocol)) != "flex")
