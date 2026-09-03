@@ -1,3 +1,17 @@
+add_executable( pdw_decoded_message_test
+    core/decoded_message_test.cpp
+    ${CMAKE_SOURCE_DIR}/core/decoded_message.cpp
+)
+
+target_include_directories( pdw_decoded_message_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+)
+
+add_test(
+    NAME pdw_decoded_message
+    COMMAND pdw_decoded_message_test
+)
+
 add_executable( pdw_preservation_capture_test
     preservation/capture_test.cpp
     ${CMAKE_SOURCE_DIR}/utils/preservation_capture.cpp

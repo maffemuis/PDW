@@ -22,6 +22,7 @@ set( PDW_INCLUDES )
 set( PWD_SRCS )
 
 # Subdirectories to go to
+add_subdirectory( core )
 add_subdirectory( GFX )
 add_subdirectory( Headers )
 add_subdirectory( utils )
