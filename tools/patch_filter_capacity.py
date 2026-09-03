@@ -53,12 +53,32 @@ pdw = replace_once(
     pdw,
     "\t\t\t\tfor (i=0; i<10; i++)",
     "\t\t\t\tfor (i=0; i<FILTER_SOUND_COUNT; i++)",
-    "sound combo count",
+    "initial sound combo count",
 )
-sentinel = "(Profile.filters[index].monitor_only ? 2 : 12)"
-if pdw.count(sentinel) != 2:
-    raise SystemExit(f"multiple-edit audio sentinel: expected 2 matches, found {pdw.count(sentinel)}")
-pdw = pdw.replace(sentinel, "(Profile.filters[index].monitor_only ? 2 : FILTER_SOUND_COUNT + 2)")
+pdw = replace_once(
+    pdw,
+    "\t\t\t\tfor (i=0; i<11; i++)",
+    "\t\t\t\tfor (i=0; i<FILTER_SOUND_COUNT; i++)",
+    "monitor-toggle sound combo count",
+)
+pdw = replace_once(
+    pdw,
+    "(Profile.filters[index].monitor_only ? 2 : 12)",
+    "(Profile.filters[index].monitor_only ? 2 : FILTER_SOUND_COUNT + 2)",
+    "save audio sentinel",
+)
+pdw = replace_once(
+    pdw,
+    "(WPARAM) filter.monitor_only ? 2 : 12",
+    "(WPARAM) (filter.monitor_only ? 2 : FILTER_SOUND_COUNT + 2)",
+    "initial audio sentinel",
+)
+pdw = replace_once(
+    pdw,
+    "(WPARAM) monitor_only ? 2 : 12",
+    "(WPARAM) (monitor_only ? 2 : FILTER_SOUND_COUNT + 2)",
+    "monitor-toggle audio sentinel",
+)
 pdw = replace_once(
     pdw,
     "void WriteFilters(PPROFILE pProfile, int backup)\n{\n\tchar szLine[256];",
@@ -175,5 +195,8 @@ misc_path.write_text(misc, encoding="latin-1")
 assert "FILTER_LABEL_LEN    1024" in header
 assert "FILTER_SOUND_COUNT  100" in header
 assert "wave_names[11]" not in pdw
+assert "i<10; i++" not in pdw
+assert "i<11; i++" not in pdw
+assert "? 2 : 12" not in pdw
 assert "char szLine[256];" not in pdw[pdw.index("void WriteFilters"):]
 print("filter capacity patch applied")
