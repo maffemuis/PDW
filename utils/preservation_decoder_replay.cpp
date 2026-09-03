@@ -37,8 +37,7 @@ void ReportReplayError(const char *detail)
     if (ReplayExitRequested())
     {
         OutputDebugStringA(message);
-        PostQuitMessage(2);
-        return;
+        ExitProcess(2);
     }
 
     MessageBoxA(
@@ -153,9 +152,12 @@ BOOL Start_Capturing(void)
         return FALSE;
     }
 
+    // This mode exists only for unattended preservation runs. By this point
+    // replay is complete and every capture write has been closed/flushed, so
+    // a direct process exit avoids entering the legacy GUI message loop.
     if (ReplayExitRequested())
     {
-        PostQuitMessage(0);
+        ExitProcess(0);
     }
 
     return TRUE;
