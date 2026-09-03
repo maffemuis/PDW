@@ -109,7 +109,7 @@ jobs:
             $expected = (Resolve-Path $case["Golden"]).Path
             $fixture = Join-Path $outputDir "pocsag-$baud-alpha.wav"
 
-            python .\tests\preservation\generate_pocsag_fixture.py $fixture $baud
+            python .\tests\preservation\generate_pocsag_fixture.py $fixture $baud alpha
             if ($LASTEXITCODE -ne 0) {
               throw "synthetic POCSAG-$baud fixture generation failed"
             }
@@ -154,6 +154,64 @@ jobs:
               Remove-Item Env:PDW_PRESERVATION_GOLDEN_CAPTURE -ErrorAction SilentlyContinue
               Remove-Item Env:PDW_PRESERVATION_REPLAY_EXIT -ErrorAction SilentlyContinue
             }
+          }
+
+      - name: Run synthetic POCSAG tone-only replay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $expected = (Resolve-Path ".\tests\preservation\golden\pocsag-1200-tone.jsonl").Path
+          $pdw = (Resolve-Path ".\build\Release\PDW.exe").Path
+          $compare = (Resolve-Path ".\build\tests\Release\pdw_preservation_compare.exe").Path
+          $outputDir = Join-Path $PWD "preservation-local"
+          New-Item -ItemType Directory -Force $outputDir | Out-Null
+
+          $fixture = Join-Path $outputDir "pocsag-1200-tone.wav"
+          python .\tests\preservation\generate_pocsag_fixture.py $fixture 1200 tone
+          if ($LASTEXITCODE -ne 0) {
+            throw "synthetic POCSAG tone-only fixture generation failed"
+          }
+
+          $capture = Join-Path $outputDir "pocsag-1200-tone.full.jsonl"
+          $actual = Join-Path $outputDir "pocsag-1200-tone.actual.jsonl"
+          [System.IO.File]::WriteAllBytes($capture, [byte[]]@())
+          [System.IO.File]::WriteAllBytes($actual, [byte[]]@())
+
+          $env:PDW_PRESERVATION_REPLAY_WAV = $fixture
+          $env:PDW_PRESERVATION_CAPTURE = $capture
+          $env:PDW_PRESERVATION_GOLDEN_CAPTURE = $actual
+          $env:PDW_PRESERVATION_REPLAY_EXIT = "1"
+
+          try {
+            $process = Start-Process `
+              -FilePath $pdw `
+              -WorkingDirectory $PWD `
+              -PassThru
+
+            if (-not $process.WaitForExit(30000)) {
+              $process.Kill()
+              throw "PDW synthetic POCSAG tone-only replay did not exit within 30 seconds"
+            }
+
+            if ($process.ExitCode -ne 0) {
+              throw "PDW synthetic POCSAG tone-only replay exited with code $($process.ExitCode)"
+            }
+
+            & $compare $expected $actual
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "Expected tone-only golden:"
+              Get-Content $expected
+              Write-Host "Actual tone-only golden:"
+              Get-Content $actual
+              throw "synthetic POCSAG tone-only golden comparison failed"
+            }
+          }
+          finally {
+            Remove-Item Env:PDW_PRESERVATION_REPLAY_WAV -ErrorAction SilentlyContinue
+            Remove-Item Env:PDW_PRESERVATION_CAPTURE -ErrorAction SilentlyContinue
+            Remove-Item Env:PDW_PRESERVATION_GOLDEN_CAPTURE -ErrorAction SilentlyContinue
+            Remove-Item Env:PDW_PRESERVATION_REPLAY_EXIT -ErrorAction SilentlyContinue
           }
 
       - name: Upload artifact
