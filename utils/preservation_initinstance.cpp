@@ -1,7 +1,9 @@
 #include <windows.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "..\Headers\pdw.h"
 #include "..\Headers\initapp.h"
 #include "..\Headers\sound_in.h"
 
