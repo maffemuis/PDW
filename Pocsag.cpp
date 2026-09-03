@@ -39,7 +39,7 @@ unsigned int sr=0;
 
 bool bDoubleDisplay;
 
-#define REST_ALPHA_BITS_LEN	6
+#define REST_ALPHA_BITS_LEN	7
 char szRestAlphaBits[REST_ALPHA_BITS_LEN]="";
 
 extern unsigned long hourly_stat[NUM_STAT][2];
