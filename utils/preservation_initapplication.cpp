@@ -5,6 +5,7 @@
 
 #include "..\Headers\pdw.h"
 #include "..\Headers\initapp.h"
+#include "..\Headers\gfx.h"
 #include "..\Headers\sound_in.h"
 #include "..\Headers\ermes.h"
 
@@ -84,6 +85,27 @@ bool SelectPreservationProtocol()
     return false;
 }
 
+void InitializeErmesHeadlessPane()
+{
+    // ERMES::frame() writes the literal "<SYNC>" diagnostic to Pane2 whenever
+    // it locks. Normal GUI startup has allocated that pane by then; one-shot
+    // preservation deliberately runs earlier. Supply only the tiny transient
+    // buffer needed for this historical side effect instead of bypassing it.
+    static char pane_chars[(LINE_SIZE + 1) * 4] = {0};
+    static BYTE pane_colors[(LINE_SIZE + 1) * 4] = {0};
+
+    memset(&Pane2, 0, sizeof(Pane2));
+    Pane2.buff_char = pane_chars;
+    Pane2.buff_color = pane_colors;
+    Pane2.buff_lines = 4;
+    Pane2.cyLines = 4;
+    Pane2.currentColor = COLOR_MESSAGE;
+
+    // Prevent the six-character sync diagnostic from entering display_line(),
+    // which belongs to the real HWND-backed GUI lifecycle.
+    NewLinePoint = LINE_SIZE;
+}
+
 bool ReplayErmesSymbolsIfRequested()
 {
     const char *symbols_path = PreservationErmesSymbolsPath();
@@ -125,6 +147,7 @@ bool ReplayErmesSymbolsIfRequested()
     // modem line state to a four-level symbol (0..3) and calls em.frame().
     // Do not route ERMES through WAV/sound_in.cpp: current PDW has no live
     // ERMES sound-card path and the WAV replay policy intentionally rejects it.
+    InitializeErmesHeadlessPane();
     em.frame(-1);
 
     size_t symbol_count = 0;
