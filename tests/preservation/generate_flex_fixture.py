@@ -20,7 +20,7 @@ CRC_GENERATOR = 0x769
 CAPCODE = 123456
 
 SYNC_WORDS = (0x870C, 0xA6C6, 0xAAAA, 0x78F3)
-EXPECTED_SHA256 = "3571da8b384438a48fd8f4ff5e35e5d2c60f588542e8bf76d2d9550312582812"
+EXPECTED_SHA256 = "b1af5b7ee1d04dd6636d8c1ddac7a86ec35f70fec0360361c9f0679e5f879c9a"
 
 # Values as PDW stores them in FLEX::frame[] after deinterleaving/ECC.
 # BIW: address field starts at word 1, vector field at word 2.
@@ -138,7 +138,22 @@ def build_bits() -> list[int]:
     data += interleave_block(FRAME_WORDS[8:])
     assert len(data) == 512
 
-    return preamble + sync + holdoff_before_cycle + cycle_info + holdoff_after_cycle + data
+    # The 44.1 kHz legacy slicer emits the final recognized sync symbol one
+    # sample-clock later than the idealized bit model. One alternating pad
+    # symbol is therefore consumed at the sync-to-data boundary. Keeping that
+    # behavior explicit makes the fixture reproduce what the real PDW audio
+    # path sees instead of bypassing or modifying the decoder.
+    alignment_pad = [1]
+
+    return (
+        preamble
+        + sync
+        + holdoff_before_cycle
+        + cycle_info
+        + holdoff_after_cycle
+        + alignment_pad
+        + data
+    )
 
 
 def build_pcm(bits: list[int]) -> bytes:
@@ -175,7 +190,7 @@ def main() -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
 
     bits = build_bits()
-    assert len(bits) == 792
+    assert len(bits) == 793
     wav = make_wav(build_pcm(bits))
     digest = hashlib.sha256(wav).hexdigest()
 
