@@ -5,23 +5,59 @@ on:
     branches:
       - modernization/ermes-byte-recovery
 
+permissions:
+  contents: write
+
 jobs:
   recover:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout clean ERMES preservation parent
         uses: actions/checkout@v4
+        with:
+          ref: 4698a3fc4b260ddb63f901e0499af4caf1376fa3
+          fetch-depth: 0
 
-      - name: Emit exact ERMES blob as base64
+      - name: Apply exact byte-safe lOnes fix
         shell: python
         run: |
-          import base64
           import hashlib
           from pathlib import Path
 
-          data = Path("ermes.cpp").read_bytes()
-          print(f"ERMES_SIZE={len(data)}")
-          print(f"ERMES_SHA256={hashlib.sha256(data).hexdigest()}")
-          encoded = base64.b64encode(data).decode("ascii")
-          for index in range(0, len(encoded), 2000):
-              print(f"ERMES_B64_{index // 2000:03d}={encoded[index:index + 2000]}")
+          path = Path("ermes.cpp")
+          data = path.read_bytes()
+          assert len(data) == 19020, len(data)
+          assert hashlib.sha256(data).hexdigest() == "dc87b36acd52ffb516de82a2adf989788ee152c30ed1d6e189aa4b8bd0e09ea9"
+
+          old = (
+              b"int ERMES::lOnes(long int k)\n"
+              b"{\n"
+              b"\tint kt;\n"
+              b"\tfor (int i=0, kt=0; i<32; i++)\n"
+          )
+          new = (
+              b"int ERMES::lOnes(long int k)\n"
+              b"{\n"
+              b"\tint kt = 0;\n"
+              b"\tfor (int i=0; i<32; i++)\n"
+          )
+          assert data.count(old) == 1, data.count(old)
+          patched = data.replace(old, new, 1)
+          path.write_bytes(patched)
+
+          assert len(patched) == 19016, len(patched)
+          print(f"PATCHED_SIZE={len(patched)}")
+          print(f"PATCHED_SHA256={hashlib.sha256(patched).hexdigest()}")
+
+      - name: Replace target branch with clean byte-safe commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "maffemuis"
+          git config user.email "55630118+maffemuis@users.noreply.github.com"
+          git switch -C modernization/ermes-tone-golden 4698a3fc4b260ddb63f901e0499af4caf1376fa3
+          git add ermes.cpp
+          git diff --cached --check
+          git commit -m "Fix ERMES Hamming-distance counter scope"
+          git push origin HEAD:modernization/ermes-tone-golden \
+            --force-with-lease=refs/heads/modernization/ermes-tone-golden:dd9ef9f7f499201f2a47a3e8e20ebcc02851e2e2
