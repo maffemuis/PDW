@@ -55,6 +55,33 @@ int main()
         return 2;
     }
 
+    const char *windows_baseline =
+        "{\"schema\":\"pdw-golden-v1\",\"message\":\"first\"}\r\n"
+        "{\"schema\":\"pdw-golden-v1\",\"message\":\"second\"}\r\n";
+
+    if (!WriteText(expected_path, windows_baseline) || !WriteText(actual_path, baseline))
+    {
+        fprintf(stderr, "failed to write cross-platform newline fixtures\n");
+        return 3;
+    }
+
+    memset(error, 0, sizeof(error));
+    line = 0;
+    result = PreservationCompareGoldenFiles(
+        expected_path,
+        actual_path,
+        &line,
+        error,
+        sizeof(error));
+
+    if (result != PRESERVATION_GOLDEN_OK || line != 0 || error[0] != '\0')
+    {
+        fprintf(stderr, "CRLF and LF golden files did not compare equal\n");
+        remove(expected_path);
+        remove(actual_path);
+        return 4;
+    }
+
     const char *changed =
         "{\"schema\":\"pdw-golden-v1\",\"message\":\"first\"}\n"
         "{\"schema\":\"pdw-golden-v1\",\"message\":\"changed\"}\n";
@@ -62,7 +89,7 @@ int main()
     if (!WriteText(actual_path, changed))
     {
         fprintf(stderr, "failed to rewrite changed golden fixture\n");
-        return 3;
+        return 5;
     }
 
     memset(error, 0, sizeof(error));
@@ -79,7 +106,7 @@ int main()
         fprintf(stderr, "golden mismatch did not report line 2\n");
         remove(expected_path);
         remove(actual_path);
-        return 4;
+        return 6;
     }
 
     const char *missing_newline =
@@ -89,7 +116,7 @@ int main()
     if (!WriteText(actual_path, missing_newline))
     {
         fprintf(stderr, "failed to write newline mismatch fixture\n");
-        return 5;
+        return 7;
     }
 
     memset(error, 0, sizeof(error));
@@ -106,7 +133,7 @@ int main()
         fprintf(stderr, "missing final newline was not detected\n");
         remove(expected_path);
         remove(actual_path);
-        return 6;
+        return 8;
     }
 
     remove(expected_path);
