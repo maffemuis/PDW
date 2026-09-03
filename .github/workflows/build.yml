@@ -11,7 +11,9 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # Preserve the existing VS2022 build baseline while the decoder behavior
+    # is being captured. windows-latest currently maps to a VS2026 image.
+    runs-on: windows-2022
 
     steps:
       - name: Checkout repository
