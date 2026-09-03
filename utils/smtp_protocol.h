@@ -16,6 +16,7 @@ SmtpTlsMode SelectSmtpTlsMode(bool tls_required, int port);
 std::string Base64Encode(const std::string &input);
 std::string BuildXOAuth2InitialResponse(const std::string &user, const std::string &access_token);
 bool HasSmtpCapability(const std::string &capabilities, const char *needle);
+std::string SanitizeSmtpHeaderValue(const std::string &value);
 }
 
 #endif
