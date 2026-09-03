@@ -22,8 +22,16 @@ SYNC_WORDS = (0x870C, 0xA6C6, 0xAAAA, 0x78F3)
 EXPECTED_SHA256 = {
     "tone": "b1af5b7ee1d04dd6636d8c1ddac7a86ec35f70fec0360361c9f0679e5f879c9a",
     "alpha": "315a0a3a12efc99df1fb9ee199f0625732d079855b362e1c851fb174e74a98cc",
+    "frag0": "f7b4366967e22ba76b4c0051cb28972c0a334c8cdc3c36ae7dc7c57f5d80f583",
+    "frag1": "b3f7e289a3d0642603ed013b25d0ebe3c92efb0db3c2406391e7fbee87427a33",
+    "frag2": "178563dfd9a240c09bdc1913c3bbe87cd4889bd7d577a7843f0a17eb496508e9",
 }
 ALPHA_MESSAGE = "FLEX GOLDEN OK!"
+FRAGMENT_CASES = {
+    "frag0": (0, "FLEX FRAG ZERO!"),
+    "frag1": (1, "FLEX FRAG ONE!!"),
+    "frag2": (2, "FLEX FRAG TWO!!"),
+}
 
 TONE_FRAME_WORDS = [
     0x000807,
@@ -63,6 +71,16 @@ def alpha_data_words(message: str) -> list[int]:
     ]
 
 
+def fragment_data_words(message: str) -> list[int]:
+    # Fragment numbers 0..2 do not skip the low 7 bits of the first data word,
+    # so five complete 21-bit words carry exactly fifteen visible characters.
+    assert len(message) == 15
+    return [
+        pack_alpha_word(message[index:index + 3])
+        for index in range(0, len(message), 3)
+    ]
+
+
 ALPHA_FRAME_WORDS = [
     0x000807,                 # BIW: asa=1, vsa=2
     CAPCODE + 32768,          # short address
@@ -76,6 +94,24 @@ ALPHA_FRAME_WORDS = [
     0x15BBBB,
     0x000000,
 ]
+
+
+def fragment_frame_words(kind: str) -> list[int]:
+    fragment_number, message = FRAGMENT_CASES[kind]
+    return [
+        0x000807,                 # BIW: asa=1, vsa=2
+        CAPCODE + 32768,          # short address
+        0x0181D8,                 # ALPHA vector: header at 3, six words total
+        fragment_number << 11,    # legacy fragment number bits 11..12
+        *fragment_data_words(message),
+        0x15CCCC,
+        0x15FFFF,
+        0x15EEEE,
+        0x159999,
+        0x158888,
+        0x15BBBB,
+        0x000000,
+    ]
 
 
 def crc21(info: int) -> int:
@@ -146,6 +182,8 @@ def frame_words(kind: str) -> list[int]:
         return list(TONE_FRAME_WORDS)
     if kind == "alpha":
         return list(ALPHA_FRAME_WORDS)
+    if kind in FRAGMENT_CASES:
+        return fragment_frame_words(kind)
     raise ValueError(f"unsupported FLEX fixture kind: {kind}")
 
 
@@ -164,22 +202,41 @@ def validate_frame_words(kind: str, words: list[int]) -> None:
         assert first == [0x1FEFFD67, 0xFDB9BCA2, 0x5AFFFE67]
         return
 
-    assert kind == "alpha"
-    assert len(ALPHA_MESSAGE) == 15
     assert ((words[2] >> 4) & 0x7) == 5
     assert ((words[2] >> 7) & 0x7F) == 3
-    assert ((words[2] >> 14) & 0x7F) == 7
-    assert ((words[3] >> 11) & 0x3) == 3
-    assert words[4:10] == [
-        0x132300,
-        0x082C45,
-        0x1327C7,
-        0x13A2C4,
-        0x12E7A0,
-        0x00C1A1,
-    ]
+
+    if kind == "alpha":
+        assert len(ALPHA_MESSAGE) == 15
+        assert ((words[2] >> 14) & 0x7F) == 7
+        assert ((words[3] >> 11) & 0x3) == 3
+        assert words[4:10] == [
+            0x132300,
+            0x082C45,
+            0x1327C7,
+            0x13A2C4,
+            0x12E7A0,
+            0x00C1A1,
+        ]
+        first = [encode_codeword(flex_wire_info(value)) for value in words[:4]]
+        assert first == [0x1FEFFD67, 0xFDB9BCA2, 0xD47C79A3, 0xFFE7FCC6]
+        return
+
+    fragment_number, message = FRAGMENT_CASES[kind]
+    assert ((words[2] >> 14) & 0x7F) == 6
+    assert ((words[3] >> 11) & 0x3) == fragment_number
+    assert words[4:9] == fragment_data_words(message)
+    expected_header_codewords = {
+        0: 0xFFFFFFFF,
+        1: 0xFFEFF860,
+        2: 0xFFF7FB59,
+    }
     first = [encode_codeword(flex_wire_info(value)) for value in words[:4]]
-    assert first == [0x1FEFFD67, 0xFDB9BCA2, 0xD47C79A3, 0xFFE7FCC6]
+    assert first == [
+        0x1FEFFD67,
+        0xFDB9BCA2,
+        0xE47E7A08,
+        expected_header_codewords[fragment_number],
+    ]
 
 
 def build_bits(kind: str) -> list[int]:
@@ -243,8 +300,9 @@ def make_wav(pcm: bytes) -> bytes:
 
 
 def main() -> int:
+    valid_kinds = "|".join(EXPECTED_SHA256)
     if len(sys.argv) not in (2, 3):
-        print(f"usage: {Path(sys.argv[0]).name} OUTPUT.wav [tone|alpha]", file=sys.stderr)
+        print(f"usage: {Path(sys.argv[0]).name} OUTPUT.wav [{valid_kinds}]", file=sys.stderr)
         return 2
 
     output = Path(sys.argv[1])

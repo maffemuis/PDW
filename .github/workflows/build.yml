@@ -226,7 +226,10 @@ jobs:
 
           $cases = @(
             @{ Kind = "tone";  Golden = ".\tests\preservation\golden\flex-1600-tone.jsonl" },
-            @{ Kind = "alpha"; Golden = ".\tests\preservation\golden\flex-1600-alpha.jsonl" }
+            @{ Kind = "alpha"; Golden = ".\tests\preservation\golden\flex-1600-alpha.jsonl" },
+            @{ Kind = "frag0"; Golden = ".\tests\preservation\golden\flex-1600-frag0.jsonl" },
+            @{ Kind = "frag1"; Golden = ".\tests\preservation\golden\flex-1600-frag1.jsonl" },
+            @{ Kind = "frag2"; Golden = ".\tests\preservation\golden\flex-1600-frag2.jsonl" }
           )
 
           foreach ($case in $cases) {
