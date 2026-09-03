@@ -25,3 +25,17 @@ add_test(
     NAME pdw_preservation_wav
     COMMAND pdw_preservation_wav_test
 )
+
+add_executable( pdw_preservation_replay_policy_test
+    preservation/replay_policy_test.cpp
+    ${CMAKE_SOURCE_DIR}/utils/preservation_decoder_replay_policy.cpp
+)
+
+target_include_directories( pdw_preservation_replay_policy_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/utils
+)
+
+add_test(
+    NAME pdw_preservation_replay_policy
+    COMMAND pdw_preservation_replay_policy_test
+)

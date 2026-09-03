@@ -69,6 +69,13 @@ set_source_files_properties( Misc.cpp PROPERTIES
         COMPILE_DEFINITIONS PDW_SHOWMESSAGE_IMPLEMENTATION
 )
 
+# Keep the legacy WinMM Start_Capturing implementation intact and expose it
+# under an internal name. The preservation adapter provides Start_Capturing()
+# and delegates here unless replay mode was explicitly requested.
+set_source_files_properties( sound_in.cpp PROPERTIES
+        COMPILE_DEFINITIONS "Start_Capturing=LegacyStart_Capturing"
+)
+
 # Create executable
 add_executable( PDW WIN32
         ${PDW_INCLUDES}

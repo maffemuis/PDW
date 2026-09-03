@@ -10,6 +10,8 @@ set( PDW_INCLUDES
   #${CMAKE_CURRENT_SOURCE_DIR}/globals.h
   #${CMAKE_CURRENT_SOURCE_DIR}/ipcnfg.h
   ${CMAKE_CURRENT_SOURCE_DIR}/preservation_capture.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/preservation_decoder_replay_policy.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/preservation_wav.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rs232.h
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp.h
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_int.h
@@ -25,7 +27,10 @@ set( PDW_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/binary.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/ipcnfg.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/preservation_capture.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/preservation_decoder_replay.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/preservation_decoder_replay_policy.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/preservation_showmessage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/preservation_wav.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/rs232.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp.cpp
   
