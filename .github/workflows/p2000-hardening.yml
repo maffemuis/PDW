@@ -7,7 +7,7 @@ on:
       - modernization/p2000-pocsag-hardening
 
 jobs:
-  p2000-short-alpha:
+  p2000-regressions:
     runs-on: windows-2022
 
     steps:
@@ -31,56 +31,70 @@ jobs:
         shell: pwsh
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - name: Run synthetic P2000 short-alpha regression
+      - name: Run synthetic P2000 regressions
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
           $pdw = (Resolve-Path ".\build\Release\PDW.exe").Path
           $compare = (Resolve-Path ".\build\tests\Release\pdw_preservation_compare.exe").Path
-          $expected = (Resolve-Path ".\tests\preservation\golden\p2000-1200-short-alpha.jsonl").Path
           $outputDir = Join-Path $PWD "preservation-local"
           New-Item -ItemType Directory -Force $outputDir | Out-Null
 
-          $fixture = Join-Path $outputDir "p2000-1200-short-alpha.wav"
-          $capture = Join-Path $outputDir "p2000-1200-short-alpha.full.jsonl"
-          $actual = Join-Path $outputDir "p2000-1200-short-alpha.actual.jsonl"
-
-          python .\tests\preservation\generate_p2000_fixture.py $fixture
-          if ($LASTEXITCODE -ne 0) {
-            throw "synthetic P2000 fixture generation failed"
-          }
-
-          [System.IO.File]::WriteAllBytes($capture, [byte[]]@())
-          [System.IO.File]::WriteAllBytes($actual, [byte[]]@())
-
-          $env:PDW_PRESERVATION_REPLAY_WAV = $fixture
-          $env:PDW_PRESERVATION_CAPTURE = $capture
-          $env:PDW_PRESERVATION_GOLDEN_CAPTURE = $actual
-          $env:PDW_PRESERVATION_REPLAY_EXIT = "1"
-
-          try {
-            $process = Start-Process -FilePath $pdw -WorkingDirectory $PWD -PassThru
-            if (-not $process.WaitForExit(30000)) {
-              $process.Kill()
-              throw "PDW P2000 short-alpha replay did not exit within 30 seconds"
+          $cases = @(
+            @{
+              Name = "short-alpha"
+              Golden = ".\tests\preservation\golden\p2000-1200-short-alpha.jsonl"
+            },
+            @{
+              Name = "bad-address"
+              Golden = ".\tests\preservation\golden\p2000-1200-bad-address.jsonl"
             }
-            if ($process.ExitCode -ne 0) {
-              throw "PDW P2000 short-alpha replay exited with code $($process.ExitCode)"
-            }
+          )
 
-            & $compare $expected $actual
+          foreach ($case in $cases) {
+            $name = $case.Name
+            $expected = (Resolve-Path $case.Golden).Path
+            $fixture = Join-Path $outputDir "p2000-1200-$name.wav"
+            $capture = Join-Path $outputDir "p2000-1200-$name.full.jsonl"
+            $actual = Join-Path $outputDir "p2000-1200-$name.actual.jsonl"
+
+            python .\tests\preservation\generate_p2000_fixture.py $fixture $name
             if ($LASTEXITCODE -ne 0) {
-              Write-Host "Expected P2000 short-alpha golden:"
-              Get-Content $expected
-              Write-Host "Actual P2000 short-alpha golden:"
-              Get-Content $actual
-              throw "P2000 short-alpha regression failed"
+              throw "synthetic P2000 fixture generation failed for $name"
             }
-          }
-          finally {
-            Remove-Item Env:PDW_PRESERVATION_REPLAY_WAV -ErrorAction SilentlyContinue
-            Remove-Item Env:PDW_PRESERVATION_CAPTURE -ErrorAction SilentlyContinue
-            Remove-Item Env:PDW_PRESERVATION_GOLDEN_CAPTURE -ErrorAction SilentlyContinue
-            Remove-Item Env:PDW_PRESERVATION_REPLAY_EXIT -ErrorAction SilentlyContinue
+
+            [System.IO.File]::WriteAllBytes($capture, [byte[]]@())
+            [System.IO.File]::WriteAllBytes($actual, [byte[]]@())
+
+            $env:PDW_PRESERVATION_REPLAY_WAV = $fixture
+            $env:PDW_PRESERVATION_CAPTURE = $capture
+            $env:PDW_PRESERVATION_GOLDEN_CAPTURE = $actual
+            $env:PDW_PRESERVATION_REPLAY_EXIT = "1"
+
+            try {
+              $process = Start-Process -FilePath $pdw -WorkingDirectory $PWD -PassThru
+              if (-not $process.WaitForExit(30000)) {
+                $process.Kill()
+                throw "PDW P2000 replay did not exit within 30 seconds for $name"
+              }
+              if ($process.ExitCode -ne 0) {
+                throw "PDW P2000 replay exited with code $($process.ExitCode) for $name"
+              }
+
+              & $compare $expected $actual
+              if ($LASTEXITCODE -ne 0) {
+                Write-Host "Expected P2000 golden for $name:"
+                Get-Content $expected
+                Write-Host "Actual P2000 golden for $name:"
+                Get-Content $actual
+                throw "P2000 regression failed for $name"
+              }
+            }
+            finally {
+              Remove-Item Env:PDW_PRESERVATION_REPLAY_WAV -ErrorAction SilentlyContinue
+              Remove-Item Env:PDW_PRESERVATION_CAPTURE -ErrorAction SilentlyContinue
+              Remove-Item Env:PDW_PRESERVATION_GOLDEN_CAPTURE -ErrorAction SilentlyContinue
+              Remove-Item Env:PDW_PRESERVATION_REPLAY_EXIT -ErrorAction SilentlyContinue
+            }
           }
