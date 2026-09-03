@@ -32,6 +32,12 @@ BOOL NEAR InitApplication(HINSTANCE hInstance)
     // defaults before calling InitApplication(). In one-shot preservation mode
     // replay immediately, before INI loading, window-class registration or any
     // other GUI startup work can block a headless CI runner.
+
+    // Legacy GUI startup normally initializes the POCSAG BCH/ECC lookup tables
+    // later during window creation. Headless one-shot replay bypasses that path,
+    // so initialize the same decoder state explicitly here.
+    setupecc();
+
     // Start_Capturing() terminates with exit 0/2 in one-shot replay mode.
     Start_Capturing();
 
