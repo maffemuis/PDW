@@ -62,3 +62,22 @@ add_executable( pdw_preservation_compare
 target_include_directories( pdw_preservation_compare PRIVATE
     ${CMAKE_SOURCE_DIR}/utils
 )
+
+find_program(PDW_PRESERVATION_PYTHON NAMES python3 python)
+
+if(PDW_PRESERVATION_PYTHON)
+    add_test(
+        NAME pdw_preservation_mobitex_basic
+        COMMAND ${CMAKE_COMMAND}
+            -DPDW_EXECUTABLE=$<TARGET_FILE:PDW>
+            -DCOMPARE_EXECUTABLE=$<TARGET_FILE:pdw_preservation_compare>
+            -DPYTHON_EXECUTABLE=${PDW_PRESERVATION_PYTHON}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DOUTPUT_DIR=${CMAKE_BINARY_DIR}/preservation-mobitex
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/preservation/run_mobitex.cmake
+    )
+
+    set_tests_properties(pdw_preservation_mobitex_basic PROPERTIES TIMEOUT 40)
+else()
+    message(WARNING "Python was not found; MOBITEX preservation replay test is unavailable")
+endif()
