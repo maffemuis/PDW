@@ -11,6 +11,15 @@
 
 BOOL LegacyStart_Capturing(void);
 
+extern int flex_timer;
+extern bool bFlexActive;
+extern int flex_blk;
+extern int g_sps;
+extern int g_sps2;
+extern int level;
+extern int flex_speed;
+extern FLEX phase_A;
+
 namespace
 {
 struct ReplaySinkContext
@@ -22,6 +31,48 @@ bool ReplayExitRequested()
 {
     const char *value = getenv("PDW_PRESERVATION_REPLAY_EXIT");
     return value && strcmp(value, "1") == 0;
+}
+
+void WriteFlexDiagnosticSnapshot()
+{
+    const char *path = getenv("PDW_PRESERVATION_FLEX_DIAGNOSTIC");
+    if (!path || !path[0])
+    {
+        return;
+    }
+
+    FILE *file = fopen(path, "wb");
+    if (!file)
+    {
+        return;
+    }
+
+    fprintf(
+        file,
+        "{\"schema\":\"pdw-flex-diagnostic-v1\","
+        "\"flex_timer\":%d,\"flex_active\":%s,\"flex_blk\":%d,"
+        "\"g_sps\":%d,\"g_sps2\":%d,\"level\":%d,"
+        "\"flex_speed\":%d,\"baud_rate\":%ld,\"frame\":[",
+        flex_timer,
+        bFlexActive ? "true" : "false",
+        flex_blk,
+        g_sps,
+        g_sps2,
+        level,
+        flex_speed,
+        BaudRate);
+
+    for (int i = 0; i < 16; ++i)
+    {
+        if (i)
+        {
+            fputc(',', file);
+        }
+        fprintf(file, "\"0x%08lX\"", (unsigned long)phase_A.frame[i]);
+    }
+
+    fputs("]}\n", file);
+    fclose(file);
 }
 
 void ReportReplayError(const char *detail)
@@ -151,6 +202,8 @@ BOOL Start_Capturing(void)
         ReportReplayError(wav_error);
         return FALSE;
     }
+
+    WriteFlexDiagnosticSnapshot();
 
     // This mode exists only for unattended preservation runs. By this point
     // replay is complete and every capture write has been closed/flushed, so
