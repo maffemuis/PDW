@@ -18,6 +18,12 @@ struct ReplaySinkContext
     PreservationReplayRoute route;
 };
 
+bool ReplayExitRequested()
+{
+    const char *value = getenv("PDW_PRESERVATION_REPLAY_EXIT");
+    return value && strcmp(value, "1") == 0;
+}
+
 void ReportReplayError(const char *detail)
 {
     char message[512];
@@ -27,6 +33,13 @@ void ReportReplayError(const char *detail)
         "Preservation replay failed.\n\n%s\n\nLive audio was not started.",
         (detail && detail[0]) ? detail : "Unknown preservation replay error.");
     message[sizeof(message) - 1] = '\0';
+
+    if (ReplayExitRequested())
+    {
+        OutputDebugStringA(message);
+        PostQuitMessage(2);
+        return;
+    }
 
     MessageBoxA(
         ghWnd,
@@ -142,6 +155,11 @@ BOOL Start_Capturing(void)
     {
         ReportReplayError(wav_error);
         return FALSE;
+    }
+
+    if (ReplayExitRequested())
+    {
+        PostQuitMessage(0);
     }
 
     return TRUE;
