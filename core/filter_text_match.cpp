@@ -22,29 +22,54 @@ std::string upper(const std::string& input) {
     return result;
 }
 
-bool starts_with(const std::string& value, const std::string& prefix) {
-    return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
-}
-
-bool alternative_matches(const TextAlternative& alt, const std::string& message_upper) {
-    if (alt.terms.empty()) return false;
+TextMatchResult match_alternative(const TextAlternative& alt, const std::string& message,
+                                  std::size_t max_spans) {
+    TextMatchResult result;
+    if (alt.terms.empty() || max_spans == 0) return result;
 
     if (alt.mode == TextMatchMode::Exact) {
-        if (alt.terms.size() != 1) return false;
-        return message_upper == alt.terms.front();
-    }
-
-    for (std::size_t i = 0; i < alt.terms.size(); ++i) {
-        const std::string& term = alt.terms[i];
-        if (term.empty()) return false;
-
-        if (alt.mode == TextMatchMode::StartsWith && i == 0) {
-            if (!starts_with(message_upper, term)) return false;
-        } else if (message_upper.find(term) == std::string::npos) {
-            return false;
+        const std::string message_upper = upper(message);
+        const std::string term_upper = upper(alt.terms.front());
+        if (message_upper == term_upper) {
+            result.matched = true;
+            result.spans.push_back({0, message.size()});
         }
+        return result;
     }
-    return true;
+
+    if (alt.mode == TextMatchMode::StartsWith) {
+        const std::string message_upper = upper(message);
+        const std::string term_upper = upper(alt.terms.front());
+        if (message_upper.size() >= term_upper.size() &&
+            message_upper.compare(0, term_upper.size(), term_upper) == 0) {
+            result.matched = true;
+            result.spans.push_back({0, alt.terms.front().size()});
+        }
+        return result;
+    }
+
+    if (alt.mode == TextMatchMode::OrderedAnd) {
+        std::size_t search_from = 0;
+        for (std::size_t i = 0; i < alt.terms.size(); ++i) {
+            const std::string& term = alt.terms[i];
+            if (term.empty()) return TextMatchResult();
+            const std::size_t found = message.find(term, search_from); // legacy '&' is case-sensitive
+            if (found == std::string::npos) return TextMatchResult();
+            if (result.spans.size() < max_spans) result.spans.push_back({found, term.size()});
+            search_from = found + term.size();
+        }
+        result.matched = true;
+        return result;
+    }
+
+    const std::string message_upper = upper(message);
+    const std::string term_upper = upper(alt.terms.front());
+    const std::size_t found = message_upper.find(term_upper);
+    if (found != std::string::npos) {
+        result.matched = true;
+        result.spans.push_back({found, alt.terms.front().size()});
+    }
+    return result;
 }
 
 } // namespace
@@ -61,22 +86,31 @@ TextFilterExpression ParseTextFilterExpression(const std::string& expression, bo
 
         if (!alternative_text.empty()) {
             TextAlternative alt;
-            alt.mode = exact_message ? TextMatchMode::Exact : TextMatchMode::Contains;
 
-            if (!exact_message && alternative_text[0] == '^') {
+            // Preserve legacy precedence independently for every ';' alternative:
+            // exact -> '^' -> '&' -> normal contains.
+            if (exact_message) {
+                alt.mode = TextMatchMode::Exact;
+                alt.terms.push_back(alternative_text);
+            } else if (alternative_text[0] == '^') {
                 alt.mode = TextMatchMode::StartsWith;
                 alternative_text = trim(alternative_text.substr(1));
-            }
-
-            std::string::size_type term_start = 0;
-            while (term_start <= alternative_text.size()) {
-                const std::string::size_type term_end = alternative_text.find('&', term_start);
-                const std::string term = trim(alternative_text.substr(
-                    term_start,
-                    term_end == std::string::npos ? std::string::npos : term_end - term_start));
-                if (!term.empty()) alt.terms.push_back(upper(term));
-                if (term_end == std::string::npos) break;
-                term_start = term_end + 1;
+                if (!alternative_text.empty()) alt.terms.push_back(alternative_text);
+            } else if (alternative_text.find('&') != std::string::npos) {
+                alt.mode = TextMatchMode::OrderedAnd;
+                std::string::size_type term_start = 0;
+                while (term_start <= alternative_text.size()) {
+                    const std::string::size_type term_end = alternative_text.find('&', term_start);
+                    const std::string term = trim(alternative_text.substr(
+                        term_start,
+                        term_end == std::string::npos ? std::string::npos : term_end - term_start));
+                    if (!term.empty()) alt.terms.push_back(term);
+                    if (term_end == std::string::npos) break;
+                    term_start = term_end + 1;
+                }
+            } else {
+                alt.mode = TextMatchMode::Contains;
+                alt.terms.push_back(alternative_text);
             }
 
             if (!alt.terms.empty()) parsed.alternatives.push_back(alt);
@@ -89,12 +123,17 @@ TextFilterExpression ParseTextFilterExpression(const std::string& expression, bo
     return parsed;
 }
 
-bool MatchTextFilterExpression(const TextFilterExpression& expression, const std::string& message) {
-    const std::string message_upper = upper(message);
+TextMatchResult FindTextFilterExpression(const TextFilterExpression& expression, const std::string& message,
+                                         std::size_t max_spans) {
     for (std::size_t i = 0; i < expression.alternatives.size(); ++i) {
-        if (alternative_matches(expression.alternatives[i], message_upper)) return true;
+        TextMatchResult result = match_alternative(expression.alternatives[i], message, max_spans);
+        if (result.matched) return result;
     }
-    return false;
+    return TextMatchResult();
+}
+
+bool MatchTextFilterExpression(const TextFilterExpression& expression, const std::string& message) {
+    return FindTextFilterExpression(expression, message).matched;
 }
 
 } // namespace pdw
