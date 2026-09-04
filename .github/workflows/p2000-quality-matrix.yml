@@ -1,0 +1,98 @@
+name: P2000 POCSAG quality matrix
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - modernization/p2000-pocsag-hardening
+
+jobs:
+  quality-matrix:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake (Win32 / Release)
+        shell: pwsh
+        run: |
+          cmake -S . -B build `
+            -G "Visual Studio 17 2022" `
+            -A Win32 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_TESTING=ON
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config Release
+
+      - name: Run full preservation suite
+        shell: pwsh
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Replay BCH correction matrix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $pdw = (Resolve-Path ".\build\Release\PDW.exe").Path
+          $outputDir = Join-Path $PWD "preservation-local\quality"
+          New-Item -ItemType Directory -Force $outputDir | Out-Null
+
+          $summary = @()
+          foreach ($errors in 0,1,2,3) {
+            $fixture = Join-Path $outputDir "p2000-message-errors-$errors.wav"
+            $capture = Join-Path $outputDir "p2000-message-errors-$errors.full.jsonl"
+            $actual = Join-Path $outputDir "p2000-message-errors-$errors.actual.jsonl"
+
+            python .\tests\preservation\generate_p2000_quality_fixture.py $fixture $errors
+            if ($LASTEXITCODE -ne 0) { throw "quality fixture generation failed for $errors errors" }
+            [System.IO.File]::WriteAllBytes($capture, [byte[]]@())
+            [System.IO.File]::WriteAllBytes($actual, [byte[]]@())
+            $env:PDW_PRESERVATION_REPLAY_WAV = $fixture
+            $env:PDW_PRESERVATION_CAPTURE = $capture
+            $env:PDW_PRESERVATION_GOLDEN_CAPTURE = $actual
+            $env:PDW_PRESERVATION_REPLAY_EXIT = "1"
+            try {
+              $process = Start-Process -FilePath $pdw -WorkingDirectory $PWD -PassThru
+              if (-not $process.WaitForExit(30000)) { $process.Kill(); throw "quality replay timeout for $errors errors" }
+              if ($process.ExitCode -ne 0) { throw "quality replay exit $($process.ExitCode) for $errors errors" }
+            }
+            finally {
+              Remove-Item Env:PDW_PRESERVATION_REPLAY_WAV -ErrorAction SilentlyContinue
+              Remove-Item Env:PDW_PRESERVATION_CAPTURE -ErrorAction SilentlyContinue
+              Remove-Item Env:PDW_PRESERVATION_GOLDEN_CAPTURE -ErrorAction SilentlyContinue
+              Remove-Item Env:PDW_PRESERVATION_REPLAY_EXIT -ErrorAction SilentlyContinue
+            }
+
+            $rows = @(Get-Content $actual | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
+            if ($errors -le 2) {
+              if ($rows.Count -ne 1) { throw "expected one corrected decode for $errors errors, got $($rows.Count)" }
+              if ($rows[0].capcode -ne "0123456") { throw "capcode changed after $errors message errors: $($rows[0].capcode)" }
+              if ($rows[0].message -ne "BRANDWEER TEST") { throw "payload changed after $errors correctable errors: $($rows[0].message)" }
+              $summary += "| $errors | corrected/clean | 1 | BRANDWEER TEST |"
+            }
+            else {
+              # An uncorrectable message codeword must not be emitted as a
+              # plausible decoded alert.  This is deliberately stricter than
+              # merely coloring corrupt characters in the UI.
+              if ($rows.Count -ne 0) {
+                $rendered = ($rows | ForEach-Object { $_.message }) -join " / "
+                throw "uncorrectable 3-bit message was rendered instead of rejected: $rendered"
+              }
+              $summary += "| $errors | rejected fail-closed | 0 | - |"
+            }
+          }
+
+          "### P2000 message-codeword quality matrix" >> $env:GITHUB_STEP_SUMMARY
+          "| BCH bit errors | Expected handling | Decoded rows | Payload |" >> $env:GITHUB_STEP_SUMMARY
+          "|---:|---|---:|---|" >> $env:GITHUB_STEP_SUMMARY
+          $summary | ForEach-Object { $_ >> $env:GITHUB_STEP_SUMMARY }
+
+      - name: Upload quality evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2000-quality-matrix-evidence
+          path: preservation-local/quality
+          if-no-files-found: warn
