@@ -39,6 +39,7 @@ unsigned int sr=0;
 
 bool bDoubleDisplay;
 bool bMessageOverflow=false;
+bool bMessageUncorrectable=false;
 
 #define REST_ALPHA_BITS_LEN	7
 char szRestAlphaBits[REST_ALPHA_BITS_LEN]="";
@@ -67,6 +68,7 @@ POCSAG::POCSAG()
 	srca  = 0;
 	bAddressWord = false;
 	bMessageOverflow = false;
+	bMessageUncorrectable = false;
 	pocsag_baud_rate = STAT_POCSAG1200;
 }
 
@@ -175,6 +177,10 @@ void POCSAG::process_word(int fn2)
 
 	if (ob[MSB] == 1)	// MSB=1 means message
 	{
+		// A BCH-uncorrectable message codeword must invalidate the whole
+		// decoded payload.  Do not pass damaged text to the normal alert path.
+		if (errl > 2) bMessageUncorrectable = true;
+
 		for (i=1; i<=20; i++)
 		{
 			sr = sr >> 1;
@@ -515,9 +521,10 @@ void POCSAG::show_message()
 {
 	int i;
 
-	// Once storage bounds are exceeded, discard the entire decode rather than
-	// exposing a truncated message that could be mistaken for a real alert.
-	if (bMessageOverflow) return;
+	// Once storage bounds are exceeded or any message codeword is BCH-
+	// uncorrectable, discard the entire decode rather than exposing plausible
+	// but damaged alert text.
+	if (bMessageOverflow || bMessageUncorrectable) return;
 
 	if (!wordc) iType = TYPE_TONE_ONLY;		// If no MSG-words => Tone-Only
 	else        iType = GetMessageType();
@@ -585,4 +592,5 @@ void POCSAG::reset()	 // reset in preperation of next message
 	wordc = 0;
 	bAddressWord = false;
 	bMessageOverflow = false;
+	bMessageUncorrectable = false;
 }
