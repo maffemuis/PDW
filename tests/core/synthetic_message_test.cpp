@@ -1,4 +1,5 @@
 #include "synthetic_message.h"
+#include "legacy_message_projection.h"
 
 #include <iostream>
 #include <string>
@@ -9,6 +10,19 @@ int Fail(const char *message)
 {
     std::cerr << message << std::endl;
     return 1;
+}
+
+bool SameMessage(const pdw::DecodedMessage& left, const pdw::DecodedMessage& right)
+{
+    return left.protocol == right.protocol
+        && left.address == right.address
+        && left.received_time == right.received_time
+        && left.received_date == right.received_date
+        && left.mode == right.mode
+        && left.type == right.type
+        && left.bitrate == right.bitrate
+        && left.text == right.text
+        && left.auxiliary == right.auxiliary;
 }
 }
 
@@ -45,15 +59,7 @@ int main()
     {
         return Fail("unknown protocol must fail closed");
     }
-    if (output.protocol != preserved.protocol
-        || output.address != preserved.address
-        || output.received_time != preserved.received_time
-        || output.received_date != preserved.received_date
-        || output.mode != preserved.mode
-        || output.type != preserved.type
-        || output.bitrate != preserved.bitrate
-        || output.text != preserved.text
-        || output.auxiliary != preserved.auxiliary)
+    if (!SameMessage(output, preserved))
     {
         return Fail("failed build must leave entire output untouched");
     }
@@ -78,27 +84,23 @@ int main()
         return Fail("empty text must fail closed");
     }
 
-    request.text.assign(1023, 'A');
+    request.text.assign(pdw::kLegacyMessageFieldMax, 'A');
     if (!pdw::BuildSyntheticMessage(request, &output))
     {
-        return Fail("max safe legacy text length must be accepted");
+        return Fail("5119-byte legacy-safe text must be accepted");
+    }
+    if (output.text.size() != pdw::kLegacyMessageFieldMax)
+    {
+        return Fail("max safe synthetic text length changed");
     }
 
     const pdw::DecodedMessage max_preserved = output;
-    request.text.assign(1024, 'B');
+    request.text.assign(pdw::kLegacyMessageFieldMax + 1, 'B');
     if (pdw::BuildSyntheticMessage(request, &output))
     {
-        return Fail("text beyond legacy pipeline bound must fail closed");
+        return Fail("5120-byte text must fail closed");
     }
-    if (output.protocol != max_preserved.protocol
-        || output.address != max_preserved.address
-        || output.received_time != max_preserved.received_time
-        || output.received_date != max_preserved.received_date
-        || output.mode != max_preserved.mode
-        || output.type != max_preserved.type
-        || output.bitrate != max_preserved.bitrate
-        || output.text != max_preserved.text
-        || output.auxiliary != max_preserved.auxiliary)
+    if (!SameMessage(output, max_preserved))
     {
         return Fail("overlong failed build modified output");
     }
