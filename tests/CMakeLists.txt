@@ -12,6 +12,21 @@ add_test(
     COMMAND pdw_decoded_message_test
 )
 
+add_executable( pdw_synthetic_message_test
+    core/synthetic_message_test.cpp
+    ${CMAKE_SOURCE_DIR}/core/decoded_message.cpp
+    ${CMAKE_SOURCE_DIR}/core/synthetic_message.cpp
+)
+
+target_include_directories( pdw_synthetic_message_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+)
+
+add_test(
+    NAME pdw_synthetic_message
+    COMMAND pdw_synthetic_message_test
+)
+
 add_executable( pdw_filter_text_match_test
     core/filter_text_match_test.cpp
     ${CMAKE_SOURCE_DIR}/core/filter_text_match.cpp
