@@ -1,5 +1,6 @@
 name: One-shot synthetic test trigger
 
+# One-shot integration helper; remove after successful patch and green CI.
 on:
   push:
     branches:
