@@ -45,9 +45,17 @@ int main()
     {
         return Fail("unknown protocol must fail closed");
     }
-    if (output.address != preserved.address || output.text != preserved.text)
+    if (output.protocol != preserved.protocol
+        || output.address != preserved.address
+        || output.received_time != preserved.received_time
+        || output.received_date != preserved.received_date
+        || output.mode != preserved.mode
+        || output.type != preserved.type
+        || output.bitrate != preserved.bitrate
+        || output.text != preserved.text
+        || output.auxiliary != preserved.auxiliary)
     {
-        return Fail("failed build must leave output untouched");
+        return Fail("failed build must leave entire output untouched");
     }
 
     request.protocol = pdw::DecodedProtocol::Pocsag;
@@ -70,10 +78,29 @@ int main()
         return Fail("empty text must fail closed");
     }
 
-    request.text.assign(1025, 'A');
+    request.text.assign(1023, 'A');
+    if (!pdw::BuildSyntheticMessage(request, &output))
+    {
+        return Fail("max safe legacy text length must be accepted");
+    }
+
+    const pdw::DecodedMessage max_preserved = output;
+    request.text.assign(1024, 'B');
     if (pdw::BuildSyntheticMessage(request, &output))
     {
-        return Fail("oversized text must fail closed");
+        return Fail("text beyond legacy pipeline bound must fail closed");
+    }
+    if (output.protocol != max_preserved.protocol
+        || output.address != max_preserved.address
+        || output.received_time != max_preserved.received_time
+        || output.received_date != max_preserved.received_date
+        || output.mode != max_preserved.mode
+        || output.type != max_preserved.type
+        || output.bitrate != max_preserved.bitrate
+        || output.text != max_preserved.text
+        || output.auxiliary != max_preserved.auxiliary)
+    {
+        return Fail("overlong failed build modified output");
     }
 
     if (pdw::BuildSyntheticMessage(request, 0))
