@@ -26,6 +26,20 @@ add_test(
     COMMAND pdw_filter_text_match_test
 )
 
+add_executable( pdw_filter_multi_edit_test
+    core/filter_multi_edit_test.cpp
+    ${CMAKE_SOURCE_DIR}/core/filter_multi_edit.cpp
+)
+
+target_include_directories( pdw_filter_multi_edit_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+)
+
+add_test(
+    NAME pdw_filter_multi_edit
+    COMMAND pdw_filter_multi_edit_test
+)
+
 add_executable( pdw_smtp_protocol_test
     smtp/smtp_protocol_test.cpp
     ${CMAKE_SOURCE_DIR}/utils/smtp_protocol.cpp
