@@ -22,44 +22,71 @@ CAPCODE = 123456
 FUNCTION_BITS = 0x3
 NUMERIC_ALPHABET = "0123456789*U -]["
 
+SYNC_MASKS = {
+    0: 0,
+    1: 1 << 31,
+    2: (1 << 31) | (1 << 17),
+    4: (1 << 31) | (1 << 17) | (1 << 9) | (1 << 2),
+    5: (1 << 31) | (1 << 17) | (1 << 9) | (1 << 2) | 1,
+}
+
 CASES = {
     "short-alpha": {
         "kind": "alpha",
         "message": "BRANDWEER TEST",
         "address_error_mask": 0x0,
+        "sync_error_mask": 0x0,
+        "invert": False,
         "sha256": "b8426b5bad113fd8710fc261385851e6005917eab7401093b6e7087042f82a39",
     },
     "short-alpha-divisor": {
         "kind": "alpha",
-        # Five message words again, but unlike the original short-alpha fixture
-        # the legacy %6 remainder window starts with a one while the proper %7
-        # trailing remainder is 00. This makes the old classifier observably
-        # choose NUMERIC instead of ALPHA.
         "message": "BRANDWEER 1234",
         "address_error_mask": 0x0,
+        "sync_error_mask": 0x0,
+        "invert": False,
         "sha256": "841a9c76d5c7defb1ea3da6334fcf950727d78f10e42476ab6e4277bebf6082c",
     },
     "numeric-binary-remainder": {
         "kind": "numeric",
-        # One numeric message word whose alpha remainder window is 0,1,1,0,0,1.
-        # The legacy strncpy/strchr code treats the first binary zero as a C
-        # string terminator and therefore misses the later one-bits, allowing
-        # the otherwise plausible alpha interpretation "MP" to win.
         "message": "-48*9",
         "address_error_mask": 0x0,
+        "sync_error_mask": 0x0,
+        "invert": False,
         "sha256": "f1612baa84925805fecdbbcedbf69e04663b8cbba9f985e3f1a74ccb163100d3",
     },
     "bad-address": {
         "kind": "alpha",
         "message": "BRANDWEER TEST",
-        # Flip three BCH check bits only. Syndrome 0x007 has no entry in
-        # PDW's one/two-bit correction table, so ecd() deterministically
-        # reports this address word as uncorrectable while leaving its
-        # address payload bits untouched.
         "address_error_mask": 0xE,
+        "sync_error_mask": 0x0,
+        "invert": False,
         "sha256": "dad365218e4acdd614a5a368a4a5acbc83fd3b61b641b7f2b1cfc5955df6b71d",
     },
 }
+
+_SYNC_HASHES = {
+    (False, 0): "b8426b5bad113fd8710fc261385851e6005917eab7401093b6e7087042f82a39",
+    (False, 1): "792a7870eb0c8a613d4d36b31612dfa0b016a804519db94bca8e8a90fdf5b8a6",
+    (False, 2): "33c96805076b03e89bac651efaded3f4277b5a1730a6cc06ca4f90660b57071d",
+    (False, 4): "d7585d1cae64142ab02e81a456e6ebda514ac0d4f2d4ef8b6063d693e4010e98",
+    (False, 5): "13974274182ac2d6d4936fa4c6b71a005eb77ca9fada8d7b3c288f03985ddbec",
+    (True, 0): "9b1de622f6e5abe7f3848dc9517daf00c4a17163df913d9464bc12375127f453",
+    (True, 1): "d21e1a133c6082d5d7a4018ef4fff2f84991e2ba54b230fde37dd3d7bcc9e1da",
+    (True, 2): "bb16e37a72caad9804ab71df978d3cd1407a90343fb709bfe96c9e99f7d8ce0d",
+    (True, 4): "4545f4b74e3d271e23958ac30549903282936ee58f2bb57d913d43e71a640dd7",
+    (True, 5): "46fcb5aa48b38291acb54a94b4bd62825da63d721a5d4a2ffd3dc74c82cf7a8f",
+}
+for inverted in (False, True):
+    for error_count, error_mask in SYNC_MASKS.items():
+        CASES[f"sync-{'inverted-' if inverted else ''}{error_count}"] = {
+            "kind": "alpha",
+            "message": "BRANDWEER TEST",
+            "address_error_mask": 0x0,
+            "sync_error_mask": error_mask,
+            "invert": inverted,
+            "sha256": _SYNC_HASHES[(inverted, error_count)],
+        }
 
 
 def crc21(info: int) -> int:
@@ -138,9 +165,13 @@ def build_bits(case_name: str) -> list[int]:
     batch.extend([IDLE] * (16 - len(batch)))
 
     bits = [1 if index % 2 == 0 else 0 for index in range(PREAMBLE_BITS)]
-    bits.extend(word_bits(SYNC))
-    for word in batch:
-        bits.extend(word_bits(word))
+    sync_bits = word_bits(SYNC ^ int(case["sync_error_mask"]))
+    payload_bits = [bit for word in batch for bit in word_bits(word)]
+    if bool(case["invert"]):
+        sync_bits = [1 - bit for bit in sync_bits]
+        payload_bits = [1 - bit for bit in payload_bits]
+    bits.extend(sync_bits)
+    bits.extend(payload_bits)
     return bits
 
 
@@ -168,11 +199,8 @@ def make_wav(pcm: bytes) -> bytes:
 
 def main() -> int:
     if len(sys.argv) not in (2, 3):
-        print(
-            f"usage: {Path(sys.argv[0]).name} OUTPUT.wav "
-            "[short-alpha|short-alpha-divisor|numeric-binary-remainder|bad-address]",
-            file=sys.stderr,
-        )
+        print(f"usage: {Path(sys.argv[0]).name} OUTPUT.wav [CASE]", file=sys.stderr)
+        print("cases: " + "|".join(sorted(CASES)), file=sys.stderr)
         return 2
 
     output = Path(sys.argv[1])
@@ -189,10 +217,7 @@ def main() -> int:
         print(f"fixture SHA-256 mismatch: {digest}", file=sys.stderr)
         return 3
     output.write_bytes(wav)
-    print(
-        f"generated {output} case={case_name} "
-        f"({len(wav)} bytes, sha256={digest})"
-    )
+    print(f"generated {output} case={case_name} ({len(wav)} bytes, sha256={digest})")
     return 0
 
 
