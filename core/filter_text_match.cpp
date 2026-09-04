@@ -143,4 +143,31 @@ bool MatchTextFilterExpression(const TextFilterExpression& expression, const std
     return FindTextFilterExpression(expression, message).matched;
 }
 
+std::size_t FindInvalidTextFilterCaret(const std::string& expression, bool exact_message) {
+    if (exact_message) return std::string::npos;
+
+    std::size_t alternative_start = 0;
+    while (alternative_start <= expression.size()) {
+        const std::size_t alternative_end = expression.find(';', alternative_start);
+        const std::size_t segment_end = alternative_end == std::string::npos ? expression.size() : alternative_end;
+
+        std::size_t first_non_space = alternative_start;
+        while (first_non_space < segment_end &&
+               std::isspace(static_cast<unsigned char>(expression[first_non_space]))) {
+            ++first_non_space;
+        }
+
+        const std::size_t first_caret = expression.find('^', alternative_start);
+        if (first_caret != std::string::npos && first_caret < segment_end) {
+            if (first_caret != first_non_space) return first_caret;
+            const std::size_t extra_caret = expression.find('^', first_caret + 1);
+            if (extra_caret != std::string::npos && extra_caret < segment_end) return extra_caret;
+        }
+
+        if (alternative_end == std::string::npos) break;
+        alternative_start = alternative_end + 1;
+    }
+    return std::string::npos;
+}
+
 } // namespace pdw
