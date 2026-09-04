@@ -13,6 +13,9 @@
 
 extern BYTE message_color[MAX_STR_LEN+1];
 
+static_assert(MAX_STR_LEN == pdw::kLegacyMessageFieldMax + 1,
+              "portable legacy message bound must match Win32 MAX_STR_LEN");
+
 namespace pdw
 {
 namespace
