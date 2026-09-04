@@ -3,7 +3,7 @@ from pathlib import Path
 
 PATH = Path("PDW.cpp")
 raw = PATH.read_bytes()
-text = raw.decode("utf-8")
+text = raw.decode("latin-1")
 nl = "\r\n" if "\r\n" in text else "\n"
 
 
@@ -55,5 +55,5 @@ if "if ((strchr(filter.text, '^') - filter.text) > 0)" in text:
 if "if (strncmp(temp_cap, \"Don't cha\", 9))\t// If not \"Don't cha(nge)\"" in text:
     raise SystemExit("multi-edit capcode write remains")
 
-PATH.write_bytes(text.encode("utf-8"))
+PATH.write_bytes(text.encode("latin-1"))
 print("filter editor UI patch: OK")
