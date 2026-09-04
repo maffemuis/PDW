@@ -79,4 +79,13 @@ bool InjectSyntheticMessageThroughPipeline(const SyntheticMessageRequest& reques
     ShowMessage();
     return true;
 }
+
+bool InjectDefaultSyntheticTestMessage()
+{
+    SyntheticMessageRequest request;
+    request.protocol = DecodedProtocol::Pocsag;
+    request.address = "1234567";
+    request.text = "PDW TEST MESSAGE";
+    return InjectSyntheticMessageThroughPipeline(request);
+}
 }
