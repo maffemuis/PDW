@@ -9,6 +9,10 @@ namespace pdw
 // legacy ShowMessage path used by decoder-originated messages.
 // Returns false before touching legacy globals when validation/projection fails.
 bool InjectSyntheticMessageThroughPipeline(const SyntheticMessageRequest& request);
+
+// Explicit user-triggered smoke message. The caller is responsible for
+// confirmation/UI; this function never runs automatically.
+bool InjectDefaultSyntheticTestMessage();
 }
 
 #endif
