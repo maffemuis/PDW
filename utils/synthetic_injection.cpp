@@ -8,10 +8,12 @@
 #include "../Headers/pdw.h"
 #include "../Headers/misc.h"
 #include "../core/legacy_message_projection.h"
+#include "../core/synthetic_injection_policy.h"
 #include "../core/synthetic_message.h"
 #include "synthetic_injection.h"
 
 extern BYTE message_color[MAX_STR_LEN+1];
+extern int iConvertingGroupcall;
 
 static_assert(MAX_STR_LEN == pdw::kLegacyMessageFieldMax + 1,
               "portable legacy message bound must match Win32 MAX_STR_LEN");
@@ -35,6 +37,13 @@ bool CopyBounded(const std::string& source, char* destination, std::size_t capac
 
 bool InjectSyntheticMessageThroughPipeline(const SyntheticMessageRequest& request)
 {
+    // The legacy ShowMessage path treats group-call conversion as an internal
+    // multi-message state. Synthetic injection must never mutate that state.
+    if (!CanInjectSyntheticMessage(iConvertingGroupcall != 0))
+    {
+        return false;
+    }
+
     DecodedMessage decoded;
     if (!BuildSyntheticMessage(request, &decoded))
     {
