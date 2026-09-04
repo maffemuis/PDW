@@ -16,6 +16,7 @@ void expect(bool condition, const char* message) {
 } // namespace
 
 int main() {
+    using pdw::FindTextFilterExpression;
     using pdw::MatchTextFilterExpression;
     using pdw::ParseTextFilterExpression;
 
@@ -23,6 +24,13 @@ int main() {
            "legacy single-text contains match");
     expect(!MatchTextFilterExpression(ParseTextFilterExpression("GROTE BRAND", false), "P 1 MIDDELBRAND"),
            "legacy single-text non-match");
+
+    const auto contains_result = FindTextFilterExpression(ParseTextFilterExpression("GROTE BRAND", false),
+                                                           "P 1 GROTE BRAND INDUSTRIE");
+    expect(contains_result.matched && contains_result.spans.size() == 1,
+           "contains match exposes one highlight span");
+    expect(contains_result.spans[0].position == 4 && contains_result.spans[0].length == 11,
+           "contains span preserves message coordinates");
 
     const auto or_filter = ParseTextFilterExpression("GROTE BRAND;ZEER GROTE BRAND;PELOTON", false);
     expect(MatchTextFilterExpression(or_filter, "P 1 ZEER GROTE BRAND BEDRIJF"), "semicolon OR alternative");
@@ -37,6 +45,19 @@ int main() {
     expect(!MatchTextFilterExpression(and_filter, "INDUSTRIE VOOR BRAND"), "legacy ampersand preserves term order");
     expect(!MatchTextFilterExpression(and_filter, "brand IN INDUSTRIEGEBIED"), "legacy ampersand remains case sensitive");
     expect(!MatchTextFilterExpression(and_filter, "BRAND IN industriegebied"), "legacy ampersand remains case sensitive for later terms");
+
+    const auto and_result = FindTextFilterExpression(and_filter, "BRAND IN INDUSTRIEGEBIED");
+    expect(and_result.matched && and_result.spans.size() == 2,
+           "ampersand match exposes all ordered highlight spans");
+    expect(and_result.spans[0].position == 0 && and_result.spans[1].position == 9,
+           "ampersand span coordinates stay ordered");
+
+    // More than ten '&' terms used to exceed the legacy ten-entry highlight arrays.
+    // Matching remains deterministic while stored spans are explicitly bounded.
+    const auto many_terms = ParseTextFilterExpression("A&B&C&D&E&F&G&H&I&J&K&L", false);
+    const auto many_result = FindTextFilterExpression(many_terms, "A B C D E F G H I J K L", 8);
+    expect(many_result.matched, "more than ten ampersand terms still match");
+    expect(many_result.spans.size() == 8, "highlight span collection obeys explicit bound");
 
     // Legacy precedence is exact -> '^' -> '&'. Therefore '&' is literal when
     // exact-message mode is active or when the filter starts with '^'.
