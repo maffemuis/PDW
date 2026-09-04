@@ -111,4 +111,13 @@ target_link_libraries( PDW
 
 if( BUILD_TESTING )
   add_subdirectory( tests )
+
+  if( MSVC )
+    add_test(
+      NAME pdw_portable_no_dynamic_msvc_runtime
+      COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+              -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/portable/check_msvc_runtime.ps1"
+              -Executable "$<TARGET_FILE:PDW>"
+    )
+  endif()
 endif()
