@@ -312,6 +312,7 @@
 #include "headers\ermes.h"
 #include "utils\rs232.h"
 #include "utils\debug.h"
+#include "utils\rx_diagnostics.h"
 #include "utils\ostype.h"
 #include "utils\smtp.h"
 #include "core\filter_text_storage.h"
@@ -423,7 +424,8 @@ time_t tStarted;	// Contains the time when PDW was started
 // If copy upper/lower pane or just copy is successful then this flag is set to TRUE.
 bool bOK_to_save=false;
 
-char *pdw_version = "PDW v3.2b01";		// Current version info
+char *pdw_version = "PDW v3.3.0-alpha1";	// Current version info
+char *pdw_title = "PDW v3.3.0-alpha1 - Powered by Nick ECO AI";
 
 // RAH: record and playback stuff
 OPENFILENAME openplayback;
@@ -492,6 +494,8 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 
 	ghWnd = NULL;
 	ghInstance = hInstance;
+	RxDiagnosticsInit();
+	RxDiagnosticsReset();
 
 	Profile.LabelLog			= 1;	// Flag for labels in monitored-logfile
 	Profile.LabelNewline		= 1;	// Flag for labels on new line
@@ -680,7 +684,7 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 
 	SetWindowPaneSize(WINDOW_SIZE);	// PH: Set Max_X_Client / iMaxWidth / NewLinePoint
 
-	sprintf(szWindowText[0], " %s", pdw_version);	// PH: Set version info in szWindowText buffer
+	sprintf(szWindowText[0], " %s", pdw_title);	// Set visible modernization build identity
 
 	Get_Date_Time();
 	sprintf(szDebugStarted, "%s %s", szCurrentDate, szCurrentTime);
@@ -1784,6 +1788,7 @@ LRESULT FAR PASCAL PDWWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 		KillTimer(ghWnd, PDW_TIMER);
 		KillTimer(ghWnd, MINUTE_TIMER);
 		KillTimer(ghWnd, SECOND_TIMER);
+		RxDiagnosticsStopRawLog();
 
 		if (pLogFile)    fclose(pLogFile);
 		if (pFilterFile) fclose(pFilterFile);
@@ -2837,6 +2842,8 @@ BOOL FAR PASCAL DebugDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	char rxqual[10]="- %";
 	char temp[32];
+	char rxText[4096];
+	RX_DIAG_SNAPSHOT rxSnapshot;
 
 	int days, hours, minutes, seconds;
 
@@ -2899,12 +2906,36 @@ BOOL FAR PASCAL DebugDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		sprintf(szTEMP, "%i / %i", nCount_BlockBuffer[0], nCount_BlockBuffer[1]);
 		SetDlgItemText(hDlg, IDC_DEBUG_BLOCKBUFFER, szTEMP);
 
+		RxDiagnosticsGetSnapshot(&rxSnapshot);
+		RxDiagnosticsFormatSnapshot(&rxSnapshot, rxText, sizeof(rxText));
+		SetDlgItemText(hDlg, IDC_DEBUG_RXTEXT, rxText);
+		EnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_START), rxSnapshot.raw_log_enabled ? FALSE : TRUE);
+		EnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_STOP),  rxSnapshot.raw_log_enabled ? TRUE : FALSE);
+
 		return (TRUE);
 
 		case WM_COMMAND:
 
 		switch (LOWORD(wParam))
 		{
+			case IDC_DEBUG_RAW_START:
+				if (!RxDiagnosticsStartRawLog(szPath, RX_DIAG_DEFAULT_RAW_LIMIT))
+				{
+					MessageBox(hDlg, "Unable to start the bounded Raw RX log.", "PDW RX Diagnostics", MB_ICONERROR | MB_OK);
+				}
+				SendMessage(hDlg, WM_WININICHANGE, 0, 0L);
+				return (TRUE);
+
+			case IDC_DEBUG_RAW_STOP:
+				RxDiagnosticsStopRawLog();
+				SendMessage(hDlg, WM_WININICHANGE, 0, 0L);
+				return (TRUE);
+
+			case IDC_DEBUG_COPY:
+				if (!RxDiagnosticsCopySnapshotToClipboard(hDlg))
+					MessageBox(hDlg, "Unable to copy diagnostics to the clipboard.", "PDW RX Diagnostics", MB_ICONERROR | MB_OK);
+				return (TRUE);
+
 			case IDCANCEL:
 
 			EndDialog(hDlg, TRUE);
