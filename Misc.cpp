@@ -17,6 +17,7 @@
 #include "headers\helper_funcs.h"
 #include "utils\binary.h"
 #include "utils\smtp.h"
+#include "core\filter_text_match.h"
 
 #define FILTER_PARAM_LEN	(MAX_STR_LEN - 1)
 #define MAXIMUM_GROUPSIZE	1000
@@ -49,7 +50,8 @@
 unsigned int bch[1025], ecs[25];     // error correction sequence
 
 int iMatch=-1, iAddrMatch=-1, iTextMatch=-1, iTextLength=0;
-int iTextPositions[10], iTextLengths[10];
+#define FILTER_MATCH_SPAN_MAX 64
+int iTextPositions[FILTER_MATCH_SPAN_MAX], iTextLengths[FILTER_MATCH_SPAN_MAX];
 
 int iCurrentCycle, iCurrentFrame;	// Current flex cycle / frame
 
@@ -920,7 +922,7 @@ void ShowMessage()
 						{
 							if (iTextLengths[0] && !Profile.FlexGroupMode)
 							{
-								for (k=0; k<10 && iTextPositions[k]; k++)
+								for (k=0; k<FILTER_MATCH_SPAN_MAX && iTextLengths[k]; k++)
 								{
 									if (pos >= iTextPositions[k] && pos < (iTextPositions[k] + iTextLengths[k]))
 									{
@@ -1781,7 +1783,7 @@ int Check_4_Filtermatch()
 
 		if (iTextLengths[0])
 		{
-			for (i=0; i<10 && iTextLengths[i]; i++)
+			for (i=0; i<FILTER_MATCH_SPAN_MAX && iTextLengths[i]; i++)
 			{
 				iTextPositions[i]=0;
 				iTextLengths[i]=0;
@@ -1848,83 +1850,29 @@ int Check_4_Filtermatch()
 		// Is there (also) text that must be matched?
 		if (Profile.filters[iFilter].type == TEXT_FILTER || (iAddrMatch == iFilter) && Profile.filters[iFilter].text[0])
 		{
-			txt_len = strlen(Profile.filters[iFilter].text);
+			pdw::TextFilterExpression expression = pdw::ParseTextFilterExpression(
+				Profile.filters[iFilter].text, Profile.filters[iFilter].match_exact_msg != 0);
+			pdw::TextMatchResult match = pdw::FindTextFilterExpression(
+				expression, Current_MSG[MSG_MESSAGE], FILTER_MATCH_SPAN_MAX);
 
-			if (Profile.filters[iFilter].match_exact_msg)
+			for (i=0; i<FILTER_MATCH_SPAN_MAX; i++)
 			{
-				if (stricmp(Current_MSG[MSG_MESSAGE], Profile.filters[iFilter].text) == 0)
-				{
-					iTextMatch = 0;
-					iTextLength = txt_len;
-				}
+				iTextPositions[i]=0;
+				iTextLengths[i]=0;
 			}
-			else if (txt_len <= msg_len)	// Text string has to be shorter than message
+
+			if (match.matched)
 			{
-				// now scan the temp_str for the temp_filter string...
-				if (Profile.filters[iFilter].text[0] == '^')
+				for (i=0; i<(int)match.spans.size() && i<FILTER_MATCH_SPAN_MAX; i++)
 				{
-					if (strnicmp(Current_MSG[MSG_MESSAGE], &Profile.filters[iFilter].text[1], txt_len-1) == 0)
-					{
-						iTextMatch = 0;
-						iTextLength = txt_len-1;
-					}
+					iTextPositions[i]=(int)match.spans[i].position;
+					iTextLengths[i]=(int)match.spans[i].length;
 				}
-				else if (strstr(Profile.filters[iFilter].text, "&") != 0)
-				{
-					while (Profile.filters[iFilter].text[i] != 0 && l < 10)
-					{
-						while (Profile.filters[iFilter].text[i] != '&' && Profile.filters[iFilter].text[i] != 0)
-						{
-							szTextTMP[j++] = Profile.filters[iFilter].text[i++];
-						}
-						szTextTMP[j]='\0';
-
-						pSearch = strstr(&Current_MSG[MSG_MESSAGE][k], szTextTMP);
-
-						if (!pSearch)
-						{
-							if (iTextLengths[0])
-							{
-								for (i=0; i<10; i++)
-								{
-									iTextPositions[i]=0;
-									iTextLengths[i]=0;
-								}
-							}
-							break;
-						}
-
-						if (Profile.filters[iFilter].text[i] == '&')
-						{
-							i++;
-							j=0;
-						}
-						k = (pSearch - Current_MSG[MSG_MESSAGE]);
-
-						iTextPositions[l]=k;
-						iTextLengths[l++]=strlen(szTextTMP);
-
-						k += strlen(szTextTMP);
-					}
-					if (pSearch)
-					{
-						iTextMatch = iFilter;
-					}
-				}
-				else
-				{
-					for (pos=0; pos <= (msg_len-txt_len); pos++)
-					{
-						if (strnicmp(&Current_MSG[MSG_MESSAGE][pos], Profile.filters[iFilter].text, txt_len) == 0)
-						{
-							iTextLength = txt_len;
-							iTextMatch = pos;
-							break;
-						}
-					}
-				}
+				iTextMatch = iFilter;
+				iTextLength = match.spans.empty() ? 0 : (int)match.spans[0].length;
 			}
-			if (Profile.filters[iFilter].type == TEXT_FILTER || (iAddrMatch == iFilter))
+
+		if (Profile.filters[iFilter].type == TEXT_FILTER || (iAddrMatch == iFilter))
 			{
 				if (iTextMatch != -1) iMatch = iFilter;
 			}
