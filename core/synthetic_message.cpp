@@ -1,11 +1,12 @@
 #include "synthetic_message.h"
+#include "legacy_message_projection.h"
 
 namespace pdw
 {
 namespace
 {
 const std::size_t kSyntheticAddressMax = 32;
-const std::size_t kSyntheticTextMax = 1023;
+const std::size_t kSyntheticTextMax = kLegacyMessageFieldMax;
 }
 
 SyntheticMessageRequest::SyntheticMessageRequest()
