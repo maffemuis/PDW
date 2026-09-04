@@ -5,7 +5,7 @@ namespace pdw
 namespace
 {
 const std::size_t kSyntheticAddressMax = 32;
-const std::size_t kSyntheticTextMax = 1024;
+const std::size_t kSyntheticTextMax = 1023;
 }
 
 SyntheticMessageRequest::SyntheticMessageRequest()
