@@ -1,0 +1,150 @@
+name: Wire RX diagnostics receive pipeline
+
+on:
+  push:
+    branches:
+      - modernization/filter-editor-usability
+    paths:
+      - .github/workflows/rx-diagnostics-wire.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify exact parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "09048d7df9fab00554049348c98c4b0cff622c5e"
+          test "${GITHUB_REF_NAME}" = "modernization/filter-editor-usability"
+
+      - name: Patch legacy receive pipeline byte-preserving
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def patch(path, old, new, count=1):
+              p = Path(path)
+              data = p.read_bytes().decode('latin-1')
+              actual = data.count(old)
+              if actual != count:
+                  raise SystemExit(f'{path}: expected {count} matches, got {actual}')
+              data = data.replace(old, new, count)
+              p.write_bytes(data.encode('latin-1'))
+
+          patch('utils/rs232.cpp',
+                '#include "rs232.h"\n',
+                '#include "rs232.h"\n#include "rx_diagnostics.h"\n')
+
+          patch('utils/rs232.cpp',
+                '\t    OUTPUTDEBUGMSG((("ERROR: CreateFile() %08lX!\\n"), GetLastError()));\n\t\tCloseHandle(m_ComPortHandle);\n',
+                '\t    OUTPUTDEBUGMSG((("ERROR: CreateFile() %08lX!\\n"), GetLastError()));\n\t\tRxDiagnosticsOnComOpenError(GetLastError());\n\t\tCloseHandle(m_ComPortHandle);\n',
+                1)
+
+          patch('utils/rs232.cpp',
+                '\tif(!SetCommState(m_ComPortHandle,&m_comDCB)) {\n\t    OUTPUTDEBUGMSG((("ERROR: GetCommState() %08lX!\\n"), GetLastError()));\n\t\tCloseHandle(m_ComPortHandle);\n\t\treturn RS232_NO_DUT;\n\t}\n',
+                '\tif(!SetCommState(m_ComPortHandle,&m_comDCB)) {\n\t    OUTPUTDEBUGMSG((("ERROR: GetCommState() %08lX!\\n"), GetLastError()));\n\t\tRxDiagnosticsOnComOpenError(GetLastError());\n\t\tCloseHandle(m_ComPortHandle);\n\t\treturn RS232_NO_DUT;\n\t}\n\tDCB verifiedDCB = {};\n\tif(GetCommState(m_ComPortHandle, &verifiedDCB)) RxDiagnosticsOnComOpen(pInSlicer->com_port, &verifiedDCB);\n\telse RxDiagnosticsOnComOpen(pInSlicer->com_port, &m_comDCB);\n',
+                1)
+
+          patch('utils/rs232.cpp',
+                '\t\tm_ComPortHandle = INVALID_HANDLE_VALUE;\n\t\tm_bConnectedToComport = FALSE;\n',
+                '\t\tm_ComPortHandle = INVALID_HANDLE_VALUE;\n\t\tm_bConnectedToComport = FALSE;\n\t\tRxDiagnosticsOnComClosed();\n',
+                1)
+
+          patch('utils/rs232.cpp',
+                '\tif(!ReadFile(m_ComPortHandle, byData, sizeof(byData), &dwRead, 0))\n\t{\n\t\tOUTPUTDEBUGMSG((("rs232_read : Error in reading 0x%0x!\\n"), GetLastError()));\n\t\tPurgeComm(m_ComPortHandle, PURGE_RXCLEAR) ;\n\t}\n\telse {\n',
+                '\tif(!ReadFile(m_ComPortHandle, byData, sizeof(byData), &dwRead, 0))\n\t{\n\t\tOUTPUTDEBUGMSG((("rs232_read : Error in reading 0x%0x!\\n"), GetLastError()));\n\t\tRxDiagnosticsOnReadError(GetLastError());\n\t\tPurgeComm(m_ComPortHandle, PURGE_RXCLEAR) ;\n\t}\n\telse {\n\t\tDWORD commErrors = 0;\n\t\tCOMSTAT commStatus = {};\n\t\tif(ClearCommError(m_ComPortHandle, &commErrors, &commStatus))\n\t\t\tRxDiagnosticsOnCommStatus(commErrors, commStatus.cbInQue);\n\t\tRxDiagnosticsOnRead(byData, dwRead, Profile.fourlevel ? TRUE : FALSE);\n',
+                1)
+
+          patch('decode.cpp',
+                '#include "utils\\debug.h"\n',
+                '#include "utils\\debug.h"\n#include "utils\\rx_diagnostics.h"\n')
+
+          patch('decode.cpp',
+                '\tpd_clk=0.0, pd_rer=0.0;\n\n\tmb.reset();',
+                '\tpd_clk=0.0, pd_rer=0.0;\n\tRxDiagnosticsOnPreambleCounters(0, 0, 0);\n\tRxDiagnosticsOnPocsagInactive();\n\n\tmb.reset();')
+
+          patch('decode.cpp',
+                'void pdw_decode(void)\n{\n\tif (bRecording)',
+                'void pdw_decode(void)\n{\n\tRxDiagnosticsSetConfiguredInvert(Profile.invert ? TRUE : FALSE);\n\tif (bRecording)')
+
+          patch('decode.cpp',
+                '\t\t\tif ((pd_dinc > 1976) && (pd_dinc < 2674)) pd_ct5++;\n\t\t\telse if (pd_ct5 > 5) pd_ct5 -= 3;\n\n\t\t\tif (pd_ct24 > 180)',
+                '\t\t\tif ((pd_dinc > 1976) && (pd_dinc < 2674)) pd_ct5++;\n\t\t\telse if (pd_ct5 > 5) pd_ct5 -= 3;\n\t\t\tRxDiagnosticsOnPreambleCounters(pd_ct5, pd_ct12, pd_ct24);\n\n\t\t\tif (pd_ct24 > 180)')
+
+          patch('decode.cpp',
+                '\t\t\t\t\tpocsag_baud_rate = STAT_POCSAG2400;\n',
+                '\t\t\t\t\tpocsag_baud_rate = STAT_POCSAG2400;\n\t\t\t\t\tRxDiagnosticsOnRateDetected(2400);\n')
+          patch('decode.cpp',
+                '\t\t\t\t\tpocsag_baud_rate = STAT_POCSAG1200;\n',
+                '\t\t\t\t\tpocsag_baud_rate = STAT_POCSAG1200;\n\t\t\t\t\tRxDiagnosticsOnRateDetected(1200);\n')
+          patch('decode.cpp',
+                '\t\t\t\t\tpocsag_baud_rate = STAT_POCSAG512;\n',
+                '\t\t\t\t\tpocsag_baud_rate = STAT_POCSAG512;\n\t\t\t\t\tRxDiagnosticsOnRateDetected(512);\n')
+
+          patch('decode.cpp',
+                '\t\t\t\t\tdisplay_showmo(MODE_IDLE);\n\t\t\t\t\tpocsag.frame(-1);\t\t\t// reset pocsag routine\n',
+                '\t\t\t\t\tdisplay_showmo(MODE_IDLE);\n\t\t\t\t\tRxDiagnosticsOnSyncLost();\n\t\t\t\t\tRxDiagnosticsOnPocsagInactive();\n\t\t\t\t\tpocsag.frame(-1);\t\t\t// reset pocsag routine\n',
+                1)
+
+          patch('decode.cpp',
+                '\t\t\tdisplay_showmo(MODE_IDLE);\n\t\t\tpocsag.frame(-1);\t\t\t// reset pocsag routine\n',
+                '\t\t\tdisplay_showmo(MODE_IDLE);\n\t\t\tRxDiagnosticsOnSyncLost();\n\t\t\tRxDiagnosticsOnPocsagInactive();\n\t\t\tpocsag.frame(-1);\t\t\t// reset pocsag routine\n',
+                1)
+
+          patch('Pocsag.cpp',
+                '#include "headers\\helper_funcs.h"\n',
+                '#include "headers\\helper_funcs.h"\n#include "utils\\rx_diagnostics.h"\n')
+
+          patch('Pocsag.cpp',
+                '\t\tnh = nOnes(sr0 ^ 0x7CD2) + nOnes(sr1 ^ 0x15D8);\n\n\t\tif (nh < 5)',
+                '\t\tnh = nOnes(sr0 ^ 0x7CD2) + nOnes(sr1 ^ 0x15D8);\n\t\tRxDiagnosticsOnSyncSearchDistance((nh > 16) ? (32 - nh) : nh, nh > 16 ? TRUE : FALSE);\n\n\t\tif (nh < 5)')
+
+          patch('Pocsag.cpp',
+                '\t\t\tbSynced = true;\n\n\t\t\tiWordNumber = 0;\n',
+                '\t\t\tbSynced = true;\n\t\t\tRxDiagnosticsOnSyncFound(nh, FALSE);\n\n\t\t\tiWordNumber = 0;\n',
+                1)
+
+          patch('Pocsag.cpp',
+                '\t\t\tInvertData();\t// Invert receive polarity\n\n\t\t\tbSynced = true;\n',
+                '\t\t\tInvertData();\t// Invert receive polarity\n\n\t\t\tbSynced = true;\n\t\t\tRxDiagnosticsOnSyncFound(32 - nh, TRUE);\n',
+                1)
+
+          patch('Pocsag.cpp',
+                '\t\tif (iWordNumber == 16)\n\t\t{\n\t\t\tbSynced = false;\t// if block count is zero go back to look for sync word\n',
+                '\t\tif (iWordNumber == 16)\n\t\t{\n\t\t\tRxDiagnosticsOnSyncLost();\n\t\t\tRxDiagnosticsOnSyncSearch();\n\t\t\tbSynced = false;\t// if block count is zero go back to look for sync word\n')
+
+          patch('Pocsag.cpp',
+                '\tint i, errl = ecd();\t\t// run error correcting routine\n\n\tif (errl < 2)',
+                '\tint i, errl = ecd();\t\t// run error correcting routine\n\tRxDiagnosticsOnCodeword(errl);\n\n\tif (errl < 2)')
+          PY
+
+      - name: Remove one-shot helper and verify diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/rx-diagnostics-wire.yml
+          git diff --check
+          git status --short
+          test -n "$(git status --short)"
+
+      - name: Commit exact patch and push if head has not drifted
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add utils/rs232.cpp decode.cpp Pocsag.cpp .github/workflows/rx-diagnostics-wire.yml
+          git diff --cached --check
+          git commit -m "Instrument COM and POCSAG receive diagnostics"
+          git fetch origin modernization/filter-editor-usability
+          test "$(git rev-parse HEAD^)" = "$(git rev-parse origin/modernization/filter-editor-usability)"
+          git push origin HEAD:modernization/filter-editor-usability
