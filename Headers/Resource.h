@@ -50,6 +50,7 @@
 #define IDM_RESET_HITCOUNTERS      243
 #define IDM_FILTERFILE_EN          244
 #define IDM_FILTERCOMMANDFILE      245
+#define IDM_TEST_MESSAGE            246
 
 #define IDM_CLEARDISPLAY           250
 #define IDM_COLOR                  251
