@@ -253,6 +253,51 @@ if(PDW_PRESERVATION_PYTHON)
     )
 
     set_tests_properties(pdw_preservation_p2000_numeric_binary_remainder PROPERTIES TIMEOUT 40)
+
+    add_test(
+        NAME pdw_preservation_p2000_short_alpha
+        COMMAND ${CMAKE_COMMAND}
+            -DPDW_EXECUTABLE=$<TARGET_FILE:PDW>
+            -DCOMPARE_EXECUTABLE=$<TARGET_FILE:pdw_preservation_compare>
+            -DPYTHON_EXECUTABLE=${PDW_PRESERVATION_PYTHON}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DOUTPUT_DIR=${CMAKE_BINARY_DIR}/preservation-p2000-short-alpha
+            -DCASE_NAME=short-alpha
+            -DGOLDEN_NAME=p2000-1200-short-alpha.jsonl
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/preservation/run_p2000_case.cmake
+    )
+
+    set_tests_properties(pdw_preservation_p2000_short_alpha PROPERTIES TIMEOUT 40)
+
+    add_test(
+        NAME pdw_preservation_p2000_short_alpha_divisor
+        COMMAND ${CMAKE_COMMAND}
+            -DPDW_EXECUTABLE=$<TARGET_FILE:PDW>
+            -DCOMPARE_EXECUTABLE=$<TARGET_FILE:pdw_preservation_compare>
+            -DPYTHON_EXECUTABLE=${PDW_PRESERVATION_PYTHON}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DOUTPUT_DIR=${CMAKE_BINARY_DIR}/preservation-p2000-short-alpha-divisor
+            -DCASE_NAME=short-alpha-divisor
+            -DGOLDEN_NAME=p2000-1200-short-alpha-divisor.jsonl
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/preservation/run_p2000_case.cmake
+    )
+
+    set_tests_properties(pdw_preservation_p2000_short_alpha_divisor PROPERTIES TIMEOUT 40)
+
+    add_test(
+        NAME pdw_preservation_p2000_bad_address
+        COMMAND ${CMAKE_COMMAND}
+            -DPDW_EXECUTABLE=$<TARGET_FILE:PDW>
+            -DCOMPARE_EXECUTABLE=$<TARGET_FILE:pdw_preservation_compare>
+            -DPYTHON_EXECUTABLE=${PDW_PRESERVATION_PYTHON}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DOUTPUT_DIR=${CMAKE_BINARY_DIR}/preservation-p2000-bad-address
+            -DCASE_NAME=bad-address
+            -DGOLDEN_NAME=p2000-1200-bad-address.jsonl
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/preservation/run_p2000_case.cmake
+    )
+
+    set_tests_properties(pdw_preservation_p2000_bad_address PROPERTIES TIMEOUT 40)
 else()
     message(WARNING "Python was not found; MOBITEX and P2000 generated preservation replay tests are unavailable")
 endif()
