@@ -4,6 +4,7 @@
 set( PDW_INCLUDES
   ${PDW_INCLUDES}
   ${CMAKE_CURRENT_SOURCE_DIR}/decoded_message.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/filter_text_match.h
 
   PARENT_SCOPE
 )
@@ -11,6 +12,7 @@ set( PDW_INCLUDES
 set( PDW_SRCS
   ${PDW_SRCS}
   ${CMAKE_CURRENT_SOURCE_DIR}/decoded_message.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/filter_text_match.cpp
 
   PARENT_SCOPE
 )
