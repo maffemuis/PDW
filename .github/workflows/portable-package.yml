@@ -1,0 +1,75 @@
+name: Build PDW Portable Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "modernization/portable-package-artifact"
+
+jobs:
+  package:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake (Win32 / Release)
+        shell: pwsh
+        run: |
+          cmake -S . -B build `
+            -G "Visual Studio 17 2022" `
+            -A Win32 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_TESTING=OFF
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build --config Release
+
+      - name: Assemble portable package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $package = Join-Path $PWD "PDW-Portable"
+          New-Item -ItemType Directory -Force $package | Out-Null
+
+          Copy-Item ".\build\Release\PDW.exe" $package
+          Copy-Item ".\pdw-manual.pdf" $package
+          Copy-Item ".\Readme" (Join-Path $package "README.txt")
+          Copy-Item ".\License" (Join-Path $package "LICENSE.txt")
+
+          @"
+          PDW Portable Test Build
+          =======================
+
+          This package is intended to be extracted to its own folder and run directly with PDW.exe.
+          No installer is required for this test phase.
+
+          Runtime notes:
+          - OpenSSL is statically linked into PDW.exe; no OpenSSL DLLs are required.
+          - PDW stores/creates its normal configuration and filter files at runtime as the legacy application does.
+          - For testing, use a separate folder and keep an existing working PDW installation unchanged as fallback.
+          - This is a standalone test build; Main/Slave, multi-receiver, network aggregation and updater work are not part of this package.
+          "@ | Set-Content -Path (Join-Path $package "PORTABLE-README.txt") -Encoding ASCII
+
+          $required = @(
+            "PDW.exe",
+            "pdw-manual.pdf",
+            "README.txt",
+            "LICENSE.txt",
+            "PORTABLE-README.txt"
+          )
+          foreach ($file in $required) {
+            if (-not (Test-Path (Join-Path $package $file))) {
+              throw "portable package missing required file: $file"
+            }
+          }
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDW-Win32-Portable
+          path: PDW-Portable\
+          if-no-files-found: error
