@@ -19,6 +19,7 @@ set( PDW_INCLUDES
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp.h
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_int.h
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection.h
   
   PARENT_SCOPE
 )
@@ -42,6 +43,7 @@ set( PDW_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/rx_diagnostics.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_modern.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection.cpp
   
   PARENT_SCOPE
 )

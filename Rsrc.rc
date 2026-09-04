@@ -94,6 +94,8 @@ BEGIN
         MENUITEM SEPARATOR
         MENUITEM "Filter File Output",          IDM_FILTERFILE_EN
         MENUITEM "Filter Command File",         IDM_FILTERCOMMANDFILE
+        MENUITEM SEPARATOR
+        MENUITEM "Send TEST/SYNTHETIC message...", IDM_TEST_MESSAGE
     END
     POPUP "&Display"
     BEGIN

@@ -315,6 +315,7 @@
 #include "utils\rx_diagnostics.h"
 #include "utils\ostype.h"
 #include "utils\smtp.h"
+#include "utils\synthetic_injection.h"
 #include "core\filter_text_storage.h"
 #include "core\filter_text_match.h"
 
@@ -1525,6 +1526,16 @@ LRESULT FAR PASCAL PDWWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 					GoModalDialogBoxParam(ghInstance, MAKEINTRESOURCE(ABOUTDLGBOX),
 												 hWnd, (DLGPROC) AboutDlgProc, 0L);
 				break;
+
+				case IDM_TEST_MESSAGE:
+					if (MessageBox(hWnd, "Inject a clearly marked TEST/SYNTHETIC message through the normal filter/action pipeline?\n\nCapcode: 1234567\nText: PDW TEST MESSAGE", "PDW Synthetic Test", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES)
+					{
+						if (!pdw::InjectDefaultSyntheticTestMessage())
+						{
+							MessageBox(hWnd, "Synthetic test injection was rejected safely.", "PDW Synthetic Test", MB_OK | MB_ICONERROR);
+						}
+					}
+					break;
 
 				case IDM_DEBUG:
 
