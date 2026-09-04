@@ -375,6 +375,10 @@
 #define IDC_DEBUG_MISSED          1179
 #define IDC_DEBUG_GROUPMSG        1180
 #define IDC_DEBUG_TEST            1181
+#define IDC_DEBUG_RXDETAIL        1182
+#define IDC_DEBUG_RAW_START       1183
+#define IDC_DEBUG_RAW_STOP        1184
+#define IDC_DEBUG_COPY            1185
 
 #define IDW_TOOL_BAR              1200
 #define IDT_TOOLBAR_BTN0          1201

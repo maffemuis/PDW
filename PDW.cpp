@@ -2848,6 +2848,7 @@ BOOL FAR PASCAL DebugDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	char rxqual[10]="- %";
 	char temp[32];
+	char rxdiag[2048];
 
 	int days, hours, minutes, seconds;
 
@@ -2910,12 +2911,74 @@ BOOL FAR PASCAL DebugDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		sprintf(szTEMP, "%i / %i", nCount_BlockBuffer[0], nCount_BlockBuffer[1]);
 		SetDlgItemText(hDlg, IDC_DEBUG_BLOCKBUFFER, szTEMP);
 
+		if (Profile.comPortEnabled && Profile.comPortRS232)
+		{
+			RS232_DIAGNOSTICS d;
+			rs232_get_diagnostics(&d);
+			rs232_format_diagnostics(rxdiag, sizeof(rxdiag));
+			SetDlgItemText(hDlg, IDC_DEBUG_RXDETAIL, rxdiag);
+			EnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_START), d.connected && !d.raw_log_enabled);
+			EnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_STOP), d.raw_log_enabled);
+		}
+		else
+		{
+			SetDlgItemText(hDlg, IDC_DEBUG_RXDETAIL, "Serial/RS232 diagnostics are inactive (input is not RS232).");
+			EnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_START), FALSE);
+			EnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_STOP), FALSE);
+		}
+
 		return (TRUE);
 
 		case WM_COMMAND:
 
 		switch (LOWORD(wParam))
 		{
+			case IDC_DEBUG_RAW_START:
+			{
+				RS232_DIAGNOSTICS d;
+				rs232_get_diagnostics(&d);
+				if (!Profile.comPortEnabled || !Profile.comPortRS232 || !d.connected)
+				{
+					MessageBox(hDlg, "Raw RX logging requires an open explicit RS232 input. No logging was started.", "PDW RX diagnostics", MB_OK | MB_ICONINFORMATION);
+				}
+				else if (!rs232_raw_log_start("pdw-rx-raw.log"))
+				{
+					MessageBox(hDlg, "Unable to create pdw-rx-raw.log. No logging was started.", "PDW RX diagnostics", MB_OK | MB_ICONERROR);
+				}
+				SendMessage(hDlg, WM_WININICHANGE, 0, 0L);
+				break;
+			}
+
+			case IDC_DEBUG_RAW_STOP:
+				rs232_raw_log_stop();
+				SendMessage(hDlg, WM_WININICHANGE, 0, 0L);
+				break;
+
+			case IDC_DEBUG_COPY:
+			{
+				HGLOBAL hMem = NULL;
+				if (Profile.comPortEnabled && Profile.comPortRS232) rs232_format_diagnostics(rxdiag, sizeof(rxdiag));
+				else strcpy(rxdiag, "Serial/RS232 diagnostics are inactive (input is not RS232).");
+				if (OpenClipboard(hDlg))
+				{
+					EmptyClipboard();
+					hMem = GlobalAlloc(GMEM_MOVEABLE, strlen(rxdiag) + 1);
+					if (hMem)
+					{
+						char *clip = (char *)GlobalLock(hMem);
+						if (clip)
+						{
+							strcpy(clip, rxdiag);
+							GlobalUnlock(hMem);
+							if (SetClipboardData(CF_TEXT, hMem)) hMem = NULL;
+						}
+					}
+					CloseClipboard();
+				}
+				if (hMem) GlobalFree(hMem);
+				break;
+			}
+
 			case IDCANCEL:
 
 			EndDialog(hDlg, TRUE);

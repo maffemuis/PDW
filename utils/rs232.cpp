@@ -28,6 +28,7 @@ static RS232_DIAGNOSTICS g_rs232_diag = {};
 static HANDLE g_raw_log = INVALID_HANDLE_VALUE;
 static SRWLOCK g_raw_log_lock = SRWLOCK_INIT;
 static DWORD g_raw_log_start_tick = 0;
+static DWORD g_diag_open_tick = 0;
 
 #define assert(a) if(!(a)) { OUTPUTDEBUGMSG(("SIMULATE ASSERT in file %s at %d\n", __FILE__, __LINE__)); }
 
@@ -43,6 +44,7 @@ static void rs232_diag_reset_runtime(void)
     g_rs232_diag.rx_queue_bytes = 0;
     g_rs232_diag.ring_position = rs232_cpstn;
     g_rs232_diag.ring_wraps = 0;
+    g_diag_open_tick = GetTickCount();
 }
 
 static void rs232_diag_record_comm_errors(DWORD errors, const COMSTAT *stat)
@@ -109,25 +111,32 @@ int rs232_format_diagnostics(char *buffer, int buffer_len)
     RS232_DIAGNOSTICS d;
     DWORD now;
     DWORD age;
+    DWORD elapsed;
+    DWORD bytes_per_sec;
+    int rc;
     if(!buffer || buffer_len <= 0) return 0;
     rs232_get_diagnostics(&d);
     now = GetTickCount();
     age = d.last_rx_tick ? now - d.last_rx_tick : 0;
-    return _snprintf(buffer, buffer_len - 1,
+    elapsed = (d.connected && g_diag_open_tick) ? now - g_diag_open_tick : 0;
+    bytes_per_sec = elapsed ? (DWORD)(((ULONGLONG)d.rx_bytes * 1000ULL) / elapsed) : 0;
+    rc = _snprintf(buffer, buffer_len - 1,
         "Serial/RS232: %s COM%d\r\n"
         "DCB: %lu baud, %u data, parity=%u, stop=%u, CTS=%s, DSR=%s, XON-in=%s, XON-out=%s\r\n"
-        "RX: bytes=%lu bits=%lu last=%s%lu ms queue=%lu ring=%lu wraps=%lu\r\n"
+        "RX: bytes=%lu rate=%lu B/s bits=%lu last=%s%lu ms queue=%lu ring=%lu wraps=%lu\r\n"
         "Errors: read=%lu framing=%lu parity=%lu overrun=%lu\r\n"
-        "Raw RX log: %s bytes=%lu limit=%s",
+        "Raw RX log: %s bytes=%lu/%lu limit=%s",
         d.connected ? "OPEN" : "CLOSED", d.com_port,
         d.baud_rate, d.byte_size, d.parity, d.stop_bits,
         d.cts_flow ? "on" : "off", d.dsr_flow ? "on" : "off",
         d.xon_xoff_in ? "on" : "off", d.xon_xoff_out ? "on" : "off",
-        d.rx_bytes, d.rx_bits, d.last_rx_tick ? "" : "never/", age,
+        d.rx_bytes, bytes_per_sec, d.rx_bits, d.last_rx_tick ? "" : "never/", age,
         d.rx_queue_bytes, d.ring_position, d.ring_wraps,
         d.read_errors, d.framing_errors, d.parity_errors, d.overrun_errors,
-        d.raw_log_enabled ? "ON" : "OFF", d.raw_log_bytes,
+        d.raw_log_enabled ? "ON" : "OFF", d.raw_log_bytes, (DWORD)RS232_RAW_LOG_MAX_BYTES,
         d.raw_log_limit_reached ? "REACHED" : "no");
+    buffer[buffer_len - 1] = 0;
+    return rc;
 }
 
 int rs232_raw_log_start(const char *path)
