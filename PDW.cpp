@@ -7750,7 +7750,8 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 				SetDlgItemText(hDlg, IDC_FILTERLASTHIT, "(total of selection)");
 
 				ShowWindow(GetDlgItem(hDlg, IDC_FILTERRESET), SW_HIDE);	// Hide reset button
-				ShowWindow(GetDlgItem(hDlg, IDC_DONTCHANGE),  SW_SHOW);	// Show "don't change"
+				SetDlgItemText(hDlg, IDC_DONTCHANGE, " NOTE : gray means 'Don't change' - click to set");
+				ShowWindow(GetDlgItem(hDlg, IDC_DONTCHANGE),  SW_SHOW);	// Show multi-edit hint
 
 				ShowWindow(GetDlgItem(hDlg, IDC_FILTER_PREVIOUS), SW_HIDE);
 				ShowWindow(GetDlgItem(hDlg, IDC_FILTER_APPLY),    SW_HIDE);
@@ -7828,6 +7829,14 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM)(LPCTSTR) "Don't change");
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) (filter.monitor_only ? 2 : FILTER_SOUND_COUNT + 2), 0L);
 			}
+		}
+		else if (multiple_edit)
+		{
+			// Mixed Monitor-Only state: keep Audio usable. Only choices that are
+			// unambiguous across both monitor-only and normal filters are offered.
+			SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM)(LPCTSTR) "Don't change");
+			SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) 1, 0L);
+			EnableWindow(GetDlgItem(hDlg, IDC_FILTERAUDIO), TRUE);
 		}
 		else EnableWindow(GetDlgItem(hDlg, IDC_FILTERAUDIO), FALSE); // If Monitor-Only == BST_INDETERMINATE
 
@@ -8457,6 +8466,12 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 							Profile.filters[index].wave_number = SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_GETCURSEL, 0, 0L);
 							if (!Profile.filters[index].monitor_only) Profile.filters[index].wave_number -= 1;
 						}
+					}
+					else if (multiple_edit && SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_GETCURSEL, 0, 0L) == 0)
+					{
+						// "No sound" has different legacy numeric values for monitor-only
+						// and normal filters; preserve that representation per row.
+						Profile.filters[index].wave_number = Profile.filters[index].monitor_only ? 0 : -1;
 					}
 
 					if (strcmp(tmp_text, "Don't change"))	// If not "Don't change"
@@ -9101,6 +9116,22 @@ BOOL FAR PASCAL MailDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			case IDC_SMTP_SETTING :
 				nOldOptions = GetMailOptions(hDlg) ;
 				break ;
+			case IDC_SMTP_SSL:
+			{
+				const int current_port = GetDlgItemInt(hDlg, IDC_SMTP_PORT, NULL, FALSE);
+				const bool tls_enabled = IsDlgButtonChecked(hDlg, IDC_SMTP_SSL) == BST_CHECKED;
+				if (tls_enabled && current_port == 25)
+				{
+					SetDlgItemInt(hDlg, IDC_SMTP_PORT, 465, FALSE);
+				}
+				else if (!tls_enabled && current_port == 465)
+				{
+					SetDlgItemInt(hDlg, IDC_SMTP_PORT, 25, FALSE);
+				}
+				Profile.nMailOptions = GetMailOptions(hDlg);
+				nOldOptions = Profile.nMailOptions;
+				break;
+			}
 			case IDC_SMTP :
 				nOldOptions = GetMailOptions(hDlg) ;
 				break ;
@@ -9117,7 +9148,6 @@ BOOL FAR PASCAL MailDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			case IDC_SMTP_TYPE    :
 			case IDC_SMTP_MESSAGE :
 			case IDC_SMTP_BITRATE :
-			case IDC_SMTP_SSL	  :
 				Profile.nMailOptions = GetMailOptions(hDlg) ;
 				if((Profile.nMailOptions & MAIL_OPTION_MODES) && (!(Profile.nMailOptions & ~MAIL_OPTION_MODES)))
 				{
