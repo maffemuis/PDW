@@ -27,6 +27,20 @@ add_test(
     COMMAND pdw_synthetic_message_test
 )
 
+add_executable( pdw_synthetic_injection_policy_test
+    core/synthetic_injection_policy_test.cpp
+    ${CMAKE_SOURCE_DIR}/core/synthetic_injection_policy.cpp
+)
+
+target_include_directories( pdw_synthetic_injection_policy_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+)
+
+add_test(
+    NAME pdw_synthetic_injection_policy
+    COMMAND pdw_synthetic_injection_policy_test
+)
+
 add_executable( pdw_legacy_message_projection_test
     core/legacy_message_projection_test.cpp
     ${CMAKE_SOURCE_DIR}/core/decoded_message.cpp
