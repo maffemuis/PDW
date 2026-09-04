@@ -86,6 +86,20 @@ add_test(
     COMMAND pdw_rx_diagnostics_test
 )
 
+add_executable( pdw_rs232_config_test
+    utils/rs232_config_test.cpp
+    ${CMAKE_SOURCE_DIR}/utils/rs232_config.cpp
+)
+
+target_include_directories( pdw_rs232_config_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/utils
+)
+
+add_test(
+    NAME pdw_rs232_config
+    COMMAND pdw_rs232_config_test
+)
+
 add_executable( pdw_preservation_capture_test
     preservation/capture_test.cpp
     ${CMAKE_SOURCE_DIR}/utils/preservation_capture.cpp

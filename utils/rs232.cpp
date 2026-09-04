@@ -5,6 +5,7 @@
 #include "..\utils\ostype.h"
 #include "..\headers\pdw.h"
 #include "rs232.h"
+#include "rs232_config.h"
 #include "rx_diagnostics.h"
 
 #define SLICER_BUFSIZE 10000
@@ -85,23 +86,22 @@ int rs232_connect(const SLICER_IN_STR *pInSlicer, SLICER_OUT_STR *pOutSlicer)
 	{
 	    OUTPUTDEBUGMSG((("ERROR: CreateFile() %08lX!\n"), GetLastError()));
 		RxDiagnosticsOnComOpenError(GetLastError());
-		CloseHandle(m_ComPortHandle);
 		return RS232_NO_DUT;
 	}
-
 
 	//	We must check if this is a Slicer Driver
 	if(!GetCommProperties(m_ComPortHandle, &ComProp)) {
 	    OUTPUTDEBUGMSG((("ERROR: GetCommProperties() %08lX!\n"), GetLastError()));
 		CloseHandle(m_ComPortHandle);
+		m_ComPortHandle = INVALID_HANDLE_VALUE;
 		return RS232_NO_DUT;
 	}
 
-	if(ComProp.dwProvSpec1 == 0x48576877 && ComProp.dwProvSpec2 == 0x68774857) 
+	if(ComProp.dwProvSpec1 == 0x48576877 && ComProp.dwProvSpec2 == 0x68774857)
 	{
 		bSlicerDriver = TRUE ;
 	}
-	else 
+	else
 	{
 		bSlicerDriver = FALSE ;
 	}
@@ -111,6 +111,7 @@ int rs232_connect(const SLICER_IN_STR *pInSlicer, SLICER_OUT_STR *pOutSlicer)
 		{
 	        OUTPUTDEBUGMSG((("ERROR:ComProp.dwProvSpec1 != 0x48576877 || ComProp.dwProvSpec2 != 0x68774857!\n")));
 		    CloseHandle(m_ComPortHandle);
+			m_ComPortHandle = INVALID_HANDLE_VALUE;
 		    MessageBox(NULL, "Please install the Slicer driver from the install package!", "Slicer Driver Not Installed", MB_OK | MB_ICONEXCLAMATION) ;
 		    return RS232_NO_DUT;
 		}
@@ -118,40 +119,74 @@ int rs232_connect(const SLICER_IN_STR *pInSlicer, SLICER_OUT_STR *pOutSlicer)
 	//	We got a connection with the serial.sys driver
 	if(!GetCommState(m_ComPortHandle,&m_comDCB))
 	{
-	    OUTPUTDEBUGMSG((("ERROR: GetCommState() %08lX!\n"), GetLastError()));
+		DWORD error = GetLastError();
+	    OUTPUTDEBUGMSG((("ERROR: GetCommState() %08lX!\n"), error));
+		RxDiagnosticsOnComOpenError(error);
 		CloseHandle(m_ComPortHandle);
+		m_ComPortHandle = INVALID_HANDLE_VALUE;
 		return RS232_NO_DUT;
 	}
 
-	// Our specific part of the connection 
-	// All the = Zero and by that default
-	m_comDCB.BaudRate			= bOrgcomPortRS232 ? CBR_19200 : (nOSType == OS_WIN2000) ? CBR_SLICER_2K : CBR_SLICER_XP;	// This means SlicerMode for the COM driver
-	m_comDCB.ByteSize			= 8 ;
-	m_comDCB.Parity				= NOPARITY ;
-	m_comDCB.StopBits			= ONESTOPBIT;
-	m_comDCB.fBinary			= TRUE;
-	m_comDCB.fParity			= FALSE;
-	m_comDCB.fDtrControl        = DTR_CONTROL_DISABLE ;
-	m_comDCB.fRtsControl		= bOrgcomPortRS232 ? RTS_CONTROL_DISABLE : RTS_CONTROL_ENABLE ;
+	if(bOrgcomPortRS232)
+	{
+		// The plain USB/virtual-COM receive path is a strict 19200 8N1 input.
+		// Never inherit CTS/DSR/XON-XOFF state left behind by another program.
+		ConfigurePlainRs232Dcb(&m_comDCB);
+	}
+	else
+	{
+		// Preserve the existing slicer-driver contract.
+		m_comDCB.BaudRate = (nOSType == OS_WIN2000) ? CBR_SLICER_2K : CBR_SLICER_XP;
+		m_comDCB.ByteSize = 8;
+		m_comDCB.Parity = NOPARITY;
+		m_comDCB.StopBits = ONESTOPBIT;
+		m_comDCB.fBinary = TRUE;
+		m_comDCB.fParity = FALSE;
+		m_comDCB.fDtrControl = DTR_CONTROL_DISABLE;
+		m_comDCB.fRtsControl = RTS_CONTROL_ENABLE;
+	}
 
 	if(!SetCommState(m_ComPortHandle,&m_comDCB)) {
-	    OUTPUTDEBUGMSG((("ERROR: GetCommState() %08lX!\n"), GetLastError()));
-		RxDiagnosticsOnComOpenError(GetLastError());
+		DWORD error = GetLastError();
+	    OUTPUTDEBUGMSG((("ERROR: SetCommState() %08lX!\n"), error));
+		RxDiagnosticsOnComOpenError(error);
 		CloseHandle(m_ComPortHandle);
+		m_ComPortHandle = INVALID_HANDLE_VALUE;
 		return RS232_NO_DUT;
 	}
+
 	DCB verifiedDCB = {};
-	if(GetCommState(m_ComPortHandle, &verifiedDCB)) RxDiagnosticsOnComOpen(pInSlicer->com_port, &verifiedDCB);
-	else RxDiagnosticsOnComOpen(pInSlicer->com_port, &m_comDCB);
+	verifiedDCB.DCBlength = sizeof(verifiedDCB);
+	if(!GetCommState(m_ComPortHandle, &verifiedDCB)) {
+		DWORD error = GetLastError();
+		OUTPUTDEBUGMSG((("ERROR: verifying GetCommState() %08lX!\n"), error));
+		RxDiagnosticsOnComOpenError(error);
+		CloseHandle(m_ComPortHandle);
+		m_ComPortHandle = INVALID_HANDLE_VALUE;
+		return RS232_NO_DUT;
+	}
+	if(bOrgcomPortRS232 && !IsPlainRs232Dcb(&verifiedDCB)) {
+		OUTPUTDEBUGMSG(("ERROR: COM driver did not retain required 19200 8N1 no-flow configuration\n"));
+		RxDiagnosticsOnComOpenError(ERROR_INVALID_DATA);
+		CloseHandle(m_ComPortHandle);
+		m_ComPortHandle = INVALID_HANDLE_VALUE;
+		return RS232_NO_DUT;
+	}
+	RxDiagnosticsOnComOpen(pInSlicer->com_port, &verifiedDCB);
+
 	if(!SetCommMask(m_ComPortHandle, bOrgcomPortRS232 ? 0 : EV_CTS | EV_DSR | EV_RLSD)) {
 	    OUTPUTDEBUGMSG((("ERROR: SetCommMask() %08lX!\n"), GetLastError()));
 		CloseHandle(m_ComPortHandle);
+		m_ComPortHandle = INVALID_HANDLE_VALUE;
+		RxDiagnosticsOnComClosed();
 		return RS232_NO_DUT;
 	}
 	/* Purge buffers:*/
 	if(!PurgeComm(m_ComPortHandle,PURGE_TXABORT|PURGE_RXABORT|PURGE_TXCLEAR|PURGE_RXCLEAR)) {
 	    OUTPUTDEBUGMSG((("ERROR: PurgeComm() %08lX!\n"), GetLastError()));
 		CloseHandle(m_ComPortHandle);
+		m_ComPortHandle = INVALID_HANDLE_VALUE;
+		RxDiagnosticsOnComClosed();
 		return RS232_NO_DUT;
 	}
 	if(bOrgcomPortRS232) {
@@ -160,6 +195,8 @@ int rs232_connect(const SLICER_IN_STR *pInSlicer, SLICER_OUT_STR *pOutSlicer)
  		if(!SetCommTimeouts(m_ComPortHandle,&ComTimeOuts)) {
 			OUTPUTDEBUGMSG((("ERROR: SetCommTimeouts() %08lX!\n"), GetLastError()));
 			CloseHandle(m_ComPortHandle);
+			m_ComPortHandle = INVALID_HANDLE_VALUE;
+			RxDiagnosticsOnComClosed();
 			return RS232_NO_DUT;
 		}
 	}
@@ -171,6 +208,16 @@ int rs232_connect(const SLICER_IN_STR *pInSlicer, SLICER_OUT_STR *pOutSlicer)
 
 	bKeepThreadAlive = TRUE;
 	m_hRxThread = CreateThread(NULL, 0, RxThread, (LPVOID) NULL, CREATE_SUSPENDED, &m_dwThreadId) ;
+	if(m_hRxThread == NULL) {
+		DWORD error = GetLastError();
+		RxDiagnosticsOnReadError(error);
+		m_hRxThread = INVALID_HANDLE_VALUE;
+		CloseHandle(m_ComPortHandle);
+		m_ComPortHandle = INVALID_HANDLE_VALUE;
+		m_bConnectedToComport = FALSE;
+		RxDiagnosticsOnComClosed();
+		return RS232_UNKNOWN;
+	}
 	ResumeThread(m_hRxThread);
 
 	return(RS232_SUCCESS) ;
