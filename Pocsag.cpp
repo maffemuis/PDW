@@ -38,6 +38,7 @@ int iAlpScore=0;	// Contains possible alphanumeric percentage
 unsigned int sr=0;
 
 bool bDoubleDisplay;
+bool bMessageOverflow=false;
 
 #define REST_ALPHA_BITS_LEN	7
 char szRestAlphaBits[REST_ALPHA_BITS_LEN]="";
@@ -65,6 +66,7 @@ POCSAG::POCSAG()
 	srcn  = 0;
 	srca  = 0;
 	bAddressWord = false;
+	bMessageOverflow = false;
 	pocsag_baud_rate = STAT_POCSAG1200;
 }
 
@@ -181,14 +183,21 @@ void POCSAG::process_word(int fn2)
 
 			if (srca++ == 6)        // store alpha char (7 bits)
 			{
-				if (errl > 2)
+				if (nalp >= MAX_STR_LEN)
 				{
-//					sr ^= 0x1000;	// keep error correcting info also
-					message_color_alp[nalp]=COLOR_BITERRORS;
+					bMessageOverflow = true;
 				}
-				else message_color_alp[nalp]=COLOR_MESSAGE;
+				else
+				{
+					if (errl > 2)
+					{
+//						sr ^= 0x1000;	// keep error correcting info also
+						message_color_alp[nalp]=COLOR_BITERRORS;
+					}
+					else message_color_alp[nalp]=COLOR_MESSAGE;
 
-				alp[nalp++] = sr;
+					alp[nalp++] = sr;
+				}
 
 				srca = 0;
 			}
@@ -506,6 +515,10 @@ void POCSAG::show_message()
 {
 	int i;
 
+	// Once storage bounds are exceeded, discard the entire decode rather than
+	// exposing a truncated message that could be mistaken for a real alert.
+	if (bMessageOverflow) return;
+
 	if (!wordc) iType = TYPE_TONE_ONLY;		// If no MSG-words => Tone-Only
 	else        iType = GetMessageType();
 
@@ -571,4 +584,5 @@ void POCSAG::reset()	 // reset in preperation of next message
 	nnum  = 0;
 	wordc = 0;
 	bAddressWord = false;
+	bMessageOverflow = false;
 }
