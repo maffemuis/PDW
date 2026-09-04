@@ -76,13 +76,17 @@ TextMatchResult match_alternative(const TextAlternative& alt, const std::string&
 
 TextFilterExpression ParseTextFilterExpression(const std::string& expression, bool exact_message) {
     TextFilterExpression parsed;
+    const bool has_or_alternatives = expression.find(';') != std::string::npos;
     std::string::size_type alt_start = 0;
 
     while (alt_start <= expression.size()) {
         const std::string::size_type alt_end = expression.find(';', alt_start);
-        std::string alternative_text = trim(expression.substr(
+        const std::string raw_alternative = expression.substr(
             alt_start,
-            alt_end == std::string::npos ? std::string::npos : alt_end - alt_start));
+            alt_end == std::string::npos ? std::string::npos : alt_end - alt_start);
+        // New ';' syntax may use visual spacing around alternatives. A legacy
+        // expression without ';' must remain byte-for-byte significant.
+        std::string alternative_text = has_or_alternatives ? trim(raw_alternative) : raw_alternative;
 
         if (!alternative_text.empty()) {
             TextAlternative alt;
@@ -94,17 +98,20 @@ TextFilterExpression ParseTextFilterExpression(const std::string& expression, bo
                 alt.terms.push_back(alternative_text);
             } else if (alternative_text[0] == '^') {
                 alt.mode = TextMatchMode::StartsWith;
-                alternative_text = trim(alternative_text.substr(1));
+                // Do not trim after '^': legacy '^ BRAND' requires that space.
+                alternative_text = alternative_text.substr(1);
                 if (!alternative_text.empty()) alt.terms.push_back(alternative_text);
             } else if (alternative_text.find('&') != std::string::npos) {
                 alt.mode = TextMatchMode::OrderedAnd;
                 std::string::size_type term_start = 0;
                 while (term_start <= alternative_text.size()) {
                     const std::string::size_type term_end = alternative_text.find('&', term_start);
-                    const std::string term = trim(alternative_text.substr(
+                    // Do not trim '&' terms: legacy matching is ordered,
+                    // case-sensitive and whitespace-significant.
+                    const std::string term = alternative_text.substr(
                         term_start,
-                        term_end == std::string::npos ? std::string::npos : term_end - term_start));
-                    if (!term.empty()) alt.terms.push_back(term);
+                        term_end == std::string::npos ? std::string::npos : term_end - term_start);
+                    alt.terms.push_back(term);
                     if (term_end == std::string::npos) break;
                     term_start = term_end + 1;
                 }
