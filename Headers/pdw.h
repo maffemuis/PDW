@@ -6,9 +6,10 @@
 #define VER_BUILD 0
 
 #define FILTER_CAPCODE_LEN  9	// longest is FLEX long (9 chars)
-#define FILTER_LABEL_LEN    256	// was 70, see issue #21
-#define FILTER_TEXT_LEN     40	// PH: was 25
+#define FILTER_LABEL_LEN    1024	// expanded modern label capacity
+#define FILTER_TEXT_LEN     255	// modern bounded filter text capacity
 #define FILTER_FILE_LEN     128	// PH: was 256
+#define FILTER_SOUND_COUNT  100	// Sound0.wav through Sound99.wav
 
 #define MAX_STR_LEN			5120
 

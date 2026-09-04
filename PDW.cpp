@@ -314,6 +314,9 @@
 #include "utils\debug.h"
 #include "utils\ostype.h"
 #include "utils\smtp.h"
+#include "utils\synthetic_injection.h"
+#include "core\filter_text_storage.h"
+#include "core\filter_text_match.h"
 
 #include "headers\helper_funcs.h"	// Extra functies van Andreas
 
@@ -1519,6 +1522,16 @@ LRESULT FAR PASCAL PDWWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 					GoModalDialogBoxParam(ghInstance, MAKEINTRESOURCE(ABOUTDLGBOX),
 												 hWnd, (DLGPROC) AboutDlgProc, 0L);
 				break;
+
+				case IDM_TEST_MESSAGE:
+					if (MessageBox(hWnd, "Inject a clearly marked TEST/SYNTHETIC message through the normal filter/action pipeline?\n\nCapcode: 1234567\nText: PDW TEST MESSAGE", "PDW Synthetic Test", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES)
+					{
+						if (!pdw::InjectDefaultSyntheticTestMessage())
+						{
+							MessageBox(hWnd, "Synthetic test injection was rejected safely.", "PDW Synthetic Test", MB_OK | MB_ICONERROR);
+						}
+					}
+					break;
 
 				case IDM_DEBUG:
 
@@ -2835,6 +2848,7 @@ BOOL FAR PASCAL DebugDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	char rxqual[10]="- %";
 	char temp[32];
+	char rxdiag[2048];
 
 	int days, hours, minutes, seconds;
 
@@ -2897,12 +2911,74 @@ BOOL FAR PASCAL DebugDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		sprintf(szTEMP, "%i / %i", nCount_BlockBuffer[0], nCount_BlockBuffer[1]);
 		SetDlgItemText(hDlg, IDC_DEBUG_BLOCKBUFFER, szTEMP);
 
+		if (Profile.comPortEnabled && Profile.comPortRS232)
+		{
+			RS232_DIAGNOSTICS d;
+			rs232_get_diagnostics(&d);
+			rs232_format_diagnostics(rxdiag, sizeof(rxdiag));
+			SetDlgItemText(hDlg, IDC_DEBUG_RXDETAIL, rxdiag);
+			EnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_START), d.connected && !d.raw_log_enabled);
+			EnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_STOP), d.raw_log_enabled);
+		}
+		else
+		{
+			SetDlgItemText(hDlg, IDC_DEBUG_RXDETAIL, "Serial/RS232 diagnostics are inactive (input is not RS232).");
+			EnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_START), FALSE);
+			EnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_STOP), FALSE);
+		}
+
 		return (TRUE);
 
 		case WM_COMMAND:
 
 		switch (LOWORD(wParam))
 		{
+			case IDC_DEBUG_RAW_START:
+			{
+				RS232_DIAGNOSTICS d;
+				rs232_get_diagnostics(&d);
+				if (!Profile.comPortEnabled || !Profile.comPortRS232 || !d.connected)
+				{
+					MessageBox(hDlg, "Raw RX logging requires an open explicit RS232 input. No logging was started.", "PDW RX diagnostics", MB_OK | MB_ICONINFORMATION);
+				}
+				else if (!rs232_raw_log_start("pdw-rx-raw.log"))
+				{
+					MessageBox(hDlg, "Unable to create pdw-rx-raw.log. No logging was started.", "PDW RX diagnostics", MB_OK | MB_ICONERROR);
+				}
+				SendMessage(hDlg, WM_WININICHANGE, 0, 0L);
+				break;
+			}
+
+			case IDC_DEBUG_RAW_STOP:
+				rs232_raw_log_stop();
+				SendMessage(hDlg, WM_WININICHANGE, 0, 0L);
+				break;
+
+			case IDC_DEBUG_COPY:
+			{
+				HGLOBAL hMem = NULL;
+				if (Profile.comPortEnabled && Profile.comPortRS232) rs232_format_diagnostics(rxdiag, sizeof(rxdiag));
+				else strcpy(rxdiag, "Serial/RS232 diagnostics are inactive (input is not RS232).");
+				if (OpenClipboard(hDlg))
+				{
+					EmptyClipboard();
+					hMem = GlobalAlloc(GMEM_MOVEABLE, strlen(rxdiag) + 1);
+					if (hMem)
+					{
+						char *clip = (char *)GlobalLock(hMem);
+						if (clip)
+						{
+							strcpy(clip, rxdiag);
+							GlobalUnlock(hMem);
+							if (SetClipboardData(CF_TEXT, hMem)) hMem = NULL;
+						}
+					}
+					CloseClipboard();
+				}
+				if (hMem) GlobalFree(hMem);
+				break;
+			}
+
 			case IDCANCEL:
 
 			EndDialog(hDlg, TRUE);
@@ -6352,8 +6428,7 @@ void Copy_Filter_Fields(FILTER *out_filter, FILTER in_filter)
 void BuildFilterString(char *temp_str, FILTER filter)
 {
 	char *filter_types[7] = {"UNUSED", "FLEX","POCSAG","TEXT","ERMES ","ACARS ", "MOBITX"};
-	char *wave_names[11]  = {"Default","Sound-0","Sound-1","Sound-2","Sound-3","Sound-4",
-									   "Sound-5","Sound-6","Sound-7","Sound-8","Sound-9"};
+	char wave_name[32];
 
 	strcpy(temp_str, filter_types[filter.type]);
 
@@ -6399,7 +6474,19 @@ void BuildFilterString(char *temp_str, FILTER filter)
 		}
 		else
 		{
-			strcat(temp_str, filter.wave_number == -1 ? "NoSound" : wave_names[filter.wave_number]);
+			if (filter.wave_number == -1)
+			{
+				strcat(temp_str, "NoSound");
+			}
+			else if (filter.wave_number == 0)
+			{
+				strcat(temp_str, "Default");
+			}
+			else
+			{
+				sprintf(wave_name, "Sound-%i", filter.wave_number-1);
+				strcat(temp_str, wave_name);
+			}
 		}
 	}
 
@@ -7397,7 +7484,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 	int sep_en=0, sep1=0, sep2=0, sep3=0;
 	
 	char temp_cap[FILTER_CAPCODE_LEN+1]="",
-		 temp[MAX_PATH],
+		 temp[MAX_STR_LEN],
 		 tmp_text[FILTER_TEXT_LEN+1],
 		 tmp_sepfile[3][MAX_PATH];
 
@@ -7797,7 +7884,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 			if (!filter.monitor_only)	// If all selected filters =! Monitor-Only
 			{
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "Default");
-				for (i=0; i<10; i++)
+				for (i=0; i<FILTER_SOUND_COUNT; i++)
 				{
 					sprintf(temp, "Sound%i.wav", i);
 					SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) temp);
@@ -7813,7 +7900,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 										// audio == BST_INDETERMINATE
 			{
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM)(LPCTSTR) "Don't change");
-				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) filter.monitor_only ? 2 : 12, 0L);
+				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) (filter.monitor_only ? 2 : FILTER_SOUND_COUNT + 2), 0L);
 			}
 		}
 		else EnableWindow(GetDlgItem(hDlg, IDC_FILTERAUDIO), FALSE); // If Monitor-Only == BST_INDETERMINATE
@@ -8066,7 +8153,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "No sound");
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "Default");
 
-				for (i=0; i<11; i++)
+				for (i=0; i<FILTER_SOUND_COUNT; i++)
 				{
 					sprintf(temp, "Sound%i.wav", i);
 					SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) temp);
@@ -8075,7 +8162,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 			if (multiple_edit)
 			{
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM)(LPCTSTR) "Don't change");
-				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) monitor_only ? 2 : 12, 0L);
+				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) (monitor_only ? 2 : FILTER_SOUND_COUNT + 2), 0L);
 			}
 			else SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) 1, 0L);
 
@@ -8283,11 +8370,13 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 					return (FALSE);
 				}
 
-				if ((strchr(filter.text, '^') - filter.text) > 0)
+				const bool exact_message = IsDlgButtonChecked(hDlg, IDC_FILTERMATCHEXACT) == BST_CHECKED;
+				const size_t invalid_caret = pdw::FindInvalidTextFilterCaret(filter.text, exact_message);
+				if (invalid_caret != std::string::npos)
 				{
-					MessageBox(hDlg, "The character ^ can only be used\nat the beginning of the line","PDW Filter Text", MB_ICONERROR);
+					MessageBox(hDlg, "The character ^ can only be used at the beginning of each ; alternative","PDW Filter Text", MB_ICONERROR);
 					SetFocus(GetDlgItem(hDlg, IDC_FILTERTEXT));
-					pos = strchr(filter.text, '^') - filter.text;
+					pos = (int)invalid_caret;
 					SendDlgItemMessage(hDlg, IDC_FILTERTEXT, EM_SETSEL, pos, pos+1);
 					return (FALSE);
 				}
@@ -8421,7 +8510,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 					Profile.filters.insert(Profile.filters.begin() + index, filter);
 				}
 
-				if (strncmp(temp_cap, "Don't cha", 9))	// If not "Don't cha(nge)"
+				if (!multiple_edit && strncmp(temp_cap, "Don't cha", 9))	// Capcode is immutable during multi-edit
 				{
 					strcpy(Profile.filters[index].capcode, filter.capcode);
 				}
@@ -8437,7 +8526,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 					{
 						Profile.filters[index].monitor_only = IsDlgButtonChecked(hDlg, IDC_FILTER_MONITOR_ONLY);
 
-						if (SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_GETCURSEL, 0, 0L) != (Profile.filters[index].monitor_only ? 2 : 12))
+						if (SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_GETCURSEL, 0, 0L) != (Profile.filters[index].monitor_only ? 2 : FILTER_SOUND_COUNT + 2))
 						{
 							Profile.filters[index].wave_number = SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_GETCURSEL, 0, 0L);
 							if (!Profile.filters[index].monitor_only) Profile.filters[index].wave_number -= 1;
@@ -9802,9 +9891,24 @@ bool ReadFilters(char *szFilters, PPROFILE pProfile, bool bNew)
 
 							if (szLine[pos+1] != '"')
 							{
-								strncpy(filter.label, &szLine[pos+1], strlen(szLine));
-								filter.label[strchr(filter.label, '"') - filter.label] = 0;
-								pos += strlen(filter.label) + 1;	// + 1 to start at last "
+								const char *label_start = &szLine[pos+1];
+								const char *label_end = strchr(label_start, '"');
+								if (!label_end)
+								{
+									bError = true;
+									break;
+								}
+
+								const size_t label_len = static_cast<size_t>(label_end - label_start);
+								if (label_len > FILTER_LABEL_LEN)
+								{
+									bError = true;
+									break;
+								}
+
+								memcpy(filter.label, label_start, label_len);
+								filter.label[label_len] = 0;
+								pos = static_cast<int>(label_end - szLine);
 							}
 							else filter.label[0] = 0;
 
@@ -9814,9 +9918,15 @@ bool ReadFilters(char *szFilters, PPROFILE pProfile, bool bNew)
 
 							if (szLine[pos+1] != '"')
 							{
-								strncpy(filter.text, &szLine[pos+1], strlen(szLine));
-								filter.text[strchr(filter.text, '"') - filter.text] = 0;
-								pos += strlen(filter.text) + 1;	// + 1 to start at last "
+								pdw::LegacyFilterTextParseResult parsed_text =
+									pdw::ExtractLegacyQuotedFilterText(szLine, pos, FILTER_TEXT_LEN);
+								if (!parsed_text.ok)
+								{
+									fclose(pFile);
+									return false;
+								}
+								strcpy(filter.text, parsed_text.text.c_str());
+								pos = parsed_text.closing_quote;
 							}
 							else filter.text[0] = 0;
 
@@ -10132,7 +10242,7 @@ void WriteSettings()
 
 void WriteFilters(PPROFILE pProfile, int backup)
 {
-	char szLine[256];
+	char szLine[MAX_STR_LEN];
 	char szFilename[MAX_PATH];
 	char szPathname[MAX_PATH];
 	char ext[10];

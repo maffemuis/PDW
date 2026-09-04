@@ -17,8 +17,9 @@
 #include "headers\helper_funcs.h"
 #include "utils\binary.h"
 #include "utils\smtp.h"
+#include "core\filter_text_match.h"
 
-#define FILTER_PARAM_LEN	500
+#define FILTER_PARAM_LEN	(MAX_STR_LEN - 1)
 #define MAXIMUM_GROUPSIZE	1000
 #define CAPCODES_INDEX		0
 
@@ -49,7 +50,8 @@
 unsigned int bch[1025], ecs[25];     // error correction sequence
 
 int iMatch=-1, iAddrMatch=-1, iTextMatch=-1, iTextLength=0;
-int iTextPositions[10], iTextLengths[10];
+#define FILTER_MATCH_SPAN_MAX 64
+int iTextPositions[FILTER_MATCH_SPAN_MAX], iTextLengths[FILTER_MATCH_SPAN_MAX];
 
 int iCurrentCycle, iCurrentFrame;	// Current flex cycle / frame
 
@@ -176,6 +178,16 @@ void display_show_str(PaneStruct *pane, char strin[])
 void display_show_strV2(PaneStruct *pane, char strin[])
 {
 	for (int x=0; ((strin[x] != 0) && (x < 256)); x++)
+	{
+		build_show_line(pane, strin[x], 0);
+	}
+}
+
+// Filter labels can be substantially longer than legacy pane fields. Keep the
+// wider limit local to labels so normal legacy field rendering stays unchanged.
+void display_show_filter_label(PaneStruct *pane, const char strin[])
+{
+	for (int x=0; ((strin[x] != 0) && (x < FILTER_LABEL_LEN)); x++)
 	{
 		build_show_line(pane, strin[x], 0);
 	}
@@ -910,7 +922,7 @@ void ShowMessage()
 						{
 							if (iTextLengths[0] && !Profile.FlexGroupMode)
 							{
-								for (k=0; k<10 && iTextPositions[k]; k++)
+								for (k=0; k<FILTER_MATCH_SPAN_MAX && iTextLengths[k]; k++)
 								{
 									if (pos >= iTextPositions[k] && pos < (iTextPositions[k] + iTextLengths[k]))
 									{
@@ -1110,21 +1122,21 @@ void ShowMessage()
 				// PH: Get/show label in monitor pane
 				display_show_strV2(&Pane1, szLabelspacing);		// First, show the correct # of spaces
 				display_color(&Pane1, dwColor);
-				display_show_strV2(&Pane1, szCurrentLabel[0]);	// Show monitorlabel in Pane1
+				display_show_filter_label(&Pane1, szCurrentLabel[0]);	// Show monitorlabel in Pane1
 			}
 			else if (bFILTERED)
 			{
 				// PH: Get/show filterlabel in filter pane
 				display_show_strV2(&Pane2, szLabelspacing);		// First, show the correct # of spaces
 				display_color(&Pane2, dwColor);
-				display_show_strV2(&Pane2, szCurrentLabel[0]);	// Show filterlabel in Pane2
+				display_show_filter_label(&Pane2, szCurrentLabel[0]);	// Show filterlabel in Pane2
 			
 				if (Profile.LabelLog && bMONITOR)
 				{
 					// PH: Show filterlabel also in monitor pane
 					display_show_strV2(&Pane1, szLabelspacing);		// First, show the correct # of spaces
 					display_color(&Pane1, dwColor);
-					display_show_strV2(&Pane1, szCurrentLabel[0]);	// Show filterlabel in Pane1
+					display_show_filter_label(&Pane1, szCurrentLabel[0]);	// Show filterlabel in Pane1
 				}
 			}
 		}	// end of filter label
@@ -1771,7 +1783,7 @@ int Check_4_Filtermatch()
 
 		if (iTextLengths[0])
 		{
-			for (i=0; i<10 && iTextLengths[i]; i++)
+			for (i=0; i<FILTER_MATCH_SPAN_MAX && iTextLengths[i]; i++)
 			{
 				iTextPositions[i]=0;
 				iTextLengths[i]=0;
@@ -1838,83 +1850,29 @@ int Check_4_Filtermatch()
 		// Is there (also) text that must be matched?
 		if (Profile.filters[iFilter].type == TEXT_FILTER || (iAddrMatch == iFilter) && Profile.filters[iFilter].text[0])
 		{
-			txt_len = strlen(Profile.filters[iFilter].text);
+			pdw::TextFilterExpression expression = pdw::ParseTextFilterExpression(
+				Profile.filters[iFilter].text, Profile.filters[iFilter].match_exact_msg != 0);
+			pdw::TextMatchResult match = pdw::FindTextFilterExpression(
+				expression, Current_MSG[MSG_MESSAGE], FILTER_MATCH_SPAN_MAX);
 
-			if (Profile.filters[iFilter].match_exact_msg)
+			for (i=0; i<FILTER_MATCH_SPAN_MAX; i++)
 			{
-				if (stricmp(Current_MSG[MSG_MESSAGE], Profile.filters[iFilter].text) == 0)
-				{
-					iTextMatch = 0;
-					iTextLength = txt_len;
-				}
+				iTextPositions[i]=0;
+				iTextLengths[i]=0;
 			}
-			else if (txt_len <= msg_len)	// Text string has to be shorter than message
+
+			if (match.matched)
 			{
-				// now scan the temp_str for the temp_filter string...
-				if (Profile.filters[iFilter].text[0] == '^')
+				for (i=0; i<(int)match.spans.size() && i<FILTER_MATCH_SPAN_MAX; i++)
 				{
-					if (strnicmp(Current_MSG[MSG_MESSAGE], &Profile.filters[iFilter].text[1], txt_len-1) == 0)
-					{
-						iTextMatch = 0;
-						iTextLength = txt_len-1;
-					}
+					iTextPositions[i]=(int)match.spans[i].position;
+					iTextLengths[i]=(int)match.spans[i].length;
 				}
-				else if (strstr(Profile.filters[iFilter].text, "&") != 0)
-				{
-					while (Profile.filters[iFilter].text[i] != 0 && l < 10)
-					{
-						while (Profile.filters[iFilter].text[i] != '&' && Profile.filters[iFilter].text[i] != 0)
-						{
-							szTextTMP[j++] = Profile.filters[iFilter].text[i++];
-						}
-						szTextTMP[j]='\0';
-
-						pSearch = strstr(&Current_MSG[MSG_MESSAGE][k], szTextTMP);
-
-						if (!pSearch)
-						{
-							if (iTextLengths[0])
-							{
-								for (i=0; i<10; i++)
-								{
-									iTextPositions[i]=0;
-									iTextLengths[i]=0;
-								}
-							}
-							break;
-						}
-
-						if (Profile.filters[iFilter].text[i] == '&')
-						{
-							i++;
-							j=0;
-						}
-						k = (pSearch - Current_MSG[MSG_MESSAGE]);
-
-						iTextPositions[l]=k;
-						iTextLengths[l++]=strlen(szTextTMP);
-
-						k += strlen(szTextTMP);
-					}
-					if (pSearch)
-					{
-						iTextMatch = iFilter;
-					}
-				}
-				else
-				{
-					for (pos=0; pos <= (msg_len-txt_len); pos++)
-					{
-						if (strnicmp(&Current_MSG[MSG_MESSAGE][pos], Profile.filters[iFilter].text, txt_len) == 0)
-						{
-							iTextLength = txt_len;
-							iTextMatch = pos;
-							break;
-						}
-					}
-				}
+				iTextMatch = iFilter;
+				iTextLength = match.spans.empty() ? 0 : (int)match.spans[0].length;
 			}
-			if (Profile.filters[iFilter].type == TEXT_FILTER || (iAddrMatch == iFilter))
+
+		if (Profile.filters[iFilter].type == TEXT_FILTER || (iAddrMatch == iFilter))
 			{
 				if (iTextMatch != -1) iMatch = iFilter;
 			}
@@ -1943,7 +1901,7 @@ void ActivateCommandFile()
 
 	while (Profile.filter_cmd_args[i] != 0)
 	{
-		if ((i > 254) || (arg_pos > FILTER_PARAM_LEN)) break;
+		if ((i > 254) || (arg_pos >= FILTER_PARAM_LEN)) break;
 
 		if (Profile.filter_cmd_args[i] == '%')
 		{
@@ -1951,7 +1909,7 @@ void ActivateCommandFile()
 
 			if (arg>0 && arg<8)
 			{
-				for (pos=0; Current_MSG[arg][pos] != 0; pos++, arg_pos++)
+				for (pos=0; Current_MSG[arg][pos] != 0 && arg_pos < FILTER_PARAM_LEN; pos++, arg_pos++)
 				{
 					if (Profile.monitor_mobitex && (arg==7) && (Current_MSG[7][pos] == '"' || Current_MSG[7][pos] == '\''))
 					{
@@ -1965,7 +1923,7 @@ void ActivateCommandFile()
 			{
 				MakeFilterLabel(Profile.filters[iMatch].label, Current_MSG[MSG_CAPCODE], szLabel);
 				pos = 0;
-				while (szLabel[pos] != 0)
+				while (szLabel[pos] != 0 && arg_pos < FILTER_PARAM_LEN)
 				{
 					param_str[arg_pos++] = szLabel[pos++];
 				}
@@ -1976,7 +1934,7 @@ void ActivateCommandFile()
 			{
 				sprintf(tmp, "%02i", iCurrentCycle);
 				pos = 0;
-				while (tmp[pos] != 0)
+				while (tmp[pos] != 0 && arg_pos < FILTER_PARAM_LEN)
 				{
 					param_str[arg_pos++] = tmp[pos++];
 				}
@@ -1987,7 +1945,7 @@ void ActivateCommandFile()
 			{
 				sprintf(tmp, "%03i", iCurrentFrame);
 				pos = 0;
-				while (tmp[pos] != 0)
+				while (tmp[pos] != 0 && arg_pos < FILTER_PARAM_LEN)
 				{
 					param_str[arg_pos++] = tmp[pos++];
 				}
@@ -2062,14 +2020,9 @@ void ActivateCommandFile()
 	ZeroMemory(&si,sizeof(si));	//Zero the STARTUPINFO struct
 	si.cb = sizeof(si);			//Must set size of structure
 
-	strcpy(szCommandFile, Profile.filter_cmd);
-
-	if (param_str[0])
-	{
-		strcat(szCommandFile, " ");
-		strcat(szCommandFile, param_str);
-	}
-	if (strlen(szCommandFile) > MAX_STR_LEN) szCommandFile[MAX_STR_LEN] = 0;
+	_snprintf(szCommandFile, sizeof(szCommandFile)-1, "%s%s%s",
+		Profile.filter_cmd, param_str[0] ? " " : "", param_str);
+	szCommandFile[sizeof(szCommandFile)-1] = '\0';
 
 	CreateProcess(NULL, szCommandFile, NULL, NULL, FALSE, NULL, 0, NULL, &si, &pif);
 
