@@ -38,8 +38,10 @@ int iAlpScore=0;	// Contains possible alphanumeric percentage
 unsigned int sr=0;
 
 bool bDoubleDisplay;
+bool bMessageOverflow=false;
+bool bMessageUncorrectable=false;
 
-#define REST_ALPHA_BITS_LEN	6
+#define REST_ALPHA_BITS_LEN	7
 char szRestAlphaBits[REST_ALPHA_BITS_LEN]="";
 
 extern unsigned long hourly_stat[NUM_STAT][2];
@@ -65,6 +67,8 @@ POCSAG::POCSAG()
 	srcn  = 0;
 	srca  = 0;
 	bAddressWord = false;
+	bMessageOverflow = false;
+	bMessageUncorrectable = false;
 	pocsag_baud_rate = STAT_POCSAG1200;
 }
 
@@ -104,7 +108,7 @@ void POCSAG::frame(int bit)
 		sr1 = 0;
 	}
 
-	if (!bSynced) // find pocsag sync sequence - sync up if there are less than 3 mismatched bits
+	if (!bSynced) // find pocsag sync sequence - sync up if there are less than 5 mismatched bits
 	{
 		nh = nOnes(sr0 ^ 0x7CD2) + nOnes(sr1 ^ 0x15D8);
 
@@ -115,7 +119,7 @@ void POCSAG::frame(int bit)
 			iWordNumber = 0;
 			cc = 0;
 		}
-		else if (nh == 32)	// 32 errors, so must be inverted
+		else if (nh > 27)	// inverted sync with fewer than 5 mismatched bits
 		{
 			InvertData();	// Invert receive polarity
 
@@ -173,6 +177,10 @@ void POCSAG::process_word(int fn2)
 
 	if (ob[MSB] == 1)	// MSB=1 means message
 	{
+		// A BCH-uncorrectable message codeword must invalidate the whole
+		// decoded payload.  Do not pass damaged text to the normal alert path.
+		if (errl > 2) bMessageUncorrectable = true;
+
 		for (i=1; i<=20; i++)
 		{
 			sr = sr >> 1;
@@ -181,14 +189,21 @@ void POCSAG::process_word(int fn2)
 
 			if (srca++ == 6)        // store alpha char (7 bits)
 			{
-				if (errl > 2)
+				if (nalp >= MAX_STR_LEN)
 				{
-//					sr ^= 0x1000;	// keep error correcting info also
-					message_color_alp[nalp]=COLOR_BITERRORS;
+					bMessageOverflow = true;
 				}
-				else message_color_alp[nalp]=COLOR_MESSAGE;
+				else
+				{
+					if (errl > 2)
+					{
+//						sr ^= 0x1000;	// keep error correcting info also
+						message_color_alp[nalp]=COLOR_BITERRORS;
+					}
+					else message_color_alp[nalp]=COLOR_MESSAGE;
 
-				alp[nalp++] = sr;
+					alp[nalp++] = sr;
+				}
 
 				srca = 0;
 			}
@@ -215,7 +230,7 @@ void POCSAG::process_word(int fn2)
 
 		int restbits = (20*wordc) % REST_ALPHA_BITS_LEN;
 		int startbit = 21-restbits;
-		strncpy(szRestAlphaBits, &ob[startbit], restbits);
+		memcpy(szRestAlphaBits, &ob[startbit], restbits);
 		szRestAlphaBits[restbits] = '\0';
 	}
 	else		// MSB bit = 0 means address
@@ -284,8 +299,6 @@ void POCSAG::show_addr(bool bAlpha)
 		break;
 	}
 
-	pocaddr = pocaddr & 0x1fffffl;
-
 	if (pocaddr > 0x3fffffl)	// If error in capcode don`t display it.
 	{
 		strcpy(Current_MSG[MSG_CAPCODE], "???????");
@@ -297,6 +310,8 @@ void POCSAG::show_addr(bool bAlpha)
 		sprintf(Current_MSG[MSG_CAPCODE], "%07li", pocaddr);				// Add capcode
 		CountBiterrors(0);
 	}
+
+	pocaddr = pocaddr & 0x1fffffl;
 
 	/* Show Capcode */
 	
@@ -364,15 +379,13 @@ int POCSAG::GetMessageType()
 
 	if (wordc < 7)					// If we have less than 7 messagewords
 	{
-//		restbits = (20*wordc) % 7;
-//		startbit = 21-restbits;
-//		strncpy(szRestAlphaBits, &ob[startbit], restbits);
-//		szRestAlphaBits[restbits] = '\0';
-//		int test = szRestAlphaBits[0] + szRestAlphaBits[1] + szRestAlphaBits[2] + szRestAlphaBits[3] + szRestAlphaBits[4] + szRestAlphaBits[5] + szRestAlphaBits[6];
-		if (strchr(szRestAlphaBits, char(1)))
-//		if (strstr(szRestAlphaBits, "1")) 
+		int restbits = (20*wordc) % REST_ALPHA_BITS_LEN;
+		for (i=0; i<restbits; i++)
 		{
-			return(TYPE_NUMERIC);	// Last (wordc % 7) bits != 0, so this is Numeric
+			if (szRestAlphaBits[i] == 1)
+			{
+				return(TYPE_NUMERIC);	// Non-zero trailing bits cannot be alpha padding.
+			}
 		}
 	}
 	else return(TYPE_ALPHA);		// More than 6 messagewords, must be alphanumeric
@@ -383,7 +396,7 @@ int POCSAG::GetMessageType()
 	}
 
 	// Store bits as numeric characters in array num[]
-	// Penalize "bad" numeric characters 'U','[',']','*','-' and ' '
+	// and penalize "bad" numeric characters 'U','[',']','*','-' and ' '
 	// The characters stored in array num[] have already the correct ASCII format
 	for (i=0; i<nnum; i++)
 	{
@@ -506,6 +519,11 @@ void POCSAG::show_message()
 {
 	int i;
 
+	// Once storage bounds are exceeded or any message codeword is BCH-
+	// uncorrectable, discard the entire decode rather than exposing plausible
+	// but damaged alert text.
+	if (bMessageOverflow || bMessageUncorrectable) return;
+
 	if (!wordc) iType = TYPE_TONE_ONLY;		// If no MSG-words => Tone-Only
 	else        iType = GetMessageType();
 
@@ -571,4 +589,6 @@ void POCSAG::reset()	 // reset in preperation of next message
 	nnum  = 0;
 	wordc = 0;
 	bAddressWord = false;
+	bMessageOverflow = false;
+	bMessageUncorrectable = false;
 }
