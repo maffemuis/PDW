@@ -104,7 +104,7 @@ void POCSAG::frame(int bit)
 		sr1 = 0;
 	}
 
-	if (!bSynced) // find pocsag sync sequence - sync up if there are less than 3 mismatched bits
+	if (!bSynced) // find pocsag sync sequence - sync up if there are less than 5 mismatched bits
 	{
 		nh = nOnes(sr0 ^ 0x7CD2) + nOnes(sr1 ^ 0x15D8);
 
@@ -115,7 +115,7 @@ void POCSAG::frame(int bit)
 			iWordNumber = 0;
 			cc = 0;
 		}
-		else if (nh == 32)	// 32 errors, so must be inverted
+		else if (nh > 27)	// inverted sync with fewer than 5 mismatched bits
 		{
 			InvertData();	// Invert receive polarity
 
