@@ -1,0 +1,42 @@
+name: One-shot synthetic test trigger
+
+on:
+  push:
+    branches:
+      - modernization/dummy-message-injection
+    paths:
+      - .github/workflows/one-shot-synthetic-test-trigger.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: modernization/dummy-message-injection
+          fetch-depth: 0
+      - name: Apply fail-closed patch
+        run: python3 tools/apply_synthetic_test_trigger.py
+      - name: Verify scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- tools/apply_synthetic_test_trigger.py .github/workflows/one-shot-synthetic-test-trigger.yml
+          changed="$(git diff --name-only)"
+          printf '%s\n' "$changed"
+          test "$changed" = $'Headers/Resource.h\nPDW.cpp\nRsrc.rc'
+          grep -q 'IDM_TEST_MESSAGE' Headers/Resource.h
+          grep -q 'Send TEST/SYNTHETIC message' Rsrc.rc
+          grep -q 'InjectDefaultSyntheticTestMessage' PDW.cpp
+      - name: Commit integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Headers/Resource.h PDW.cpp Rsrc.rc
+          git commit -m "Integrate explicit synthetic test trigger"
+          git push origin HEAD:modernization/dummy-message-injection
