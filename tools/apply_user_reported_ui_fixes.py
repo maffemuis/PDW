@@ -41,6 +41,11 @@ anchor = '''\t\t\tcase IDC_SMTP_SETTING :\n\t\t\t\tnOldOptions = GetMailOptions(
 insert = '''\t\t\tcase IDC_SMTP_SETTING :\n\t\t\t\tnOldOptions = GetMailOptions(hDlg) ;\n\t\t\t\tbreak ;\n\t\t\tcase IDC_SMTP_SSL:\n\t\t\t{\n\t\t\t\tconst int current_port = GetDlgItemInt(hDlg, IDC_SMTP_PORT, NULL, FALSE);\n\t\t\t\tconst bool tls_enabled = IsDlgButtonChecked(hDlg, IDC_SMTP_SSL) == BST_CHECKED;\n\t\t\t\tif (tls_enabled && current_port == 25)\n\t\t\t\t{\n\t\t\t\t\tSetDlgItemInt(hDlg, IDC_SMTP_PORT, 465, FALSE);\n\t\t\t\t}\n\t\t\t\telse if (!tls_enabled && current_port == 465)\n\t\t\t\t{\n\t\t\t\t\tSetDlgItemInt(hDlg, IDC_SMTP_PORT, 25, FALSE);\n\t\t\t\t}\n\t\t\t\tProfile.nMailOptions = GetMailOptions(hDlg);\n\t\t\t\tnOldOptions = Profile.nMailOptions;\n\t\t\t\tbreak;\n\t\t\t}\n'''
 pdw = replace_once(pdw, anchor, insert, "SSL/TLS port toggle")
 
+if 'case IDC_SMTP_SSL:\n' not in pdw or 'current_port == 25' not in pdw:
+    raise SystemExit("SSL/TLS port toggle was not installed")
+if 'else if (multiple_edit && SendDlgItemMessage(hDlg, IDC_FILTERAUDIO' not in pdw:
+    raise SystemExit("mixed-audio apply path was not installed")
+
 pdw_path.write_bytes(pdw.encode("latin-1"))
 
 rc_path = Path("Rsrc.rc")
@@ -51,15 +56,8 @@ rc = replace_once(
     '    CONTROL         "SSL/TLS",IDC_SMTP_SSL,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,253,23,43,10',
     "SSL/TLS label",
 )
+if 'CONTROL         "SSL/TLS",IDC_SMTP_SSL' not in rc:
+    raise SystemExit("SSL/TLS label was not installed")
 rc_path.write_bytes(rc.encode("latin-1"))
-
-# Fail closed if legacy strings unexpectedly survived.
-checks = {
-    "old SSL label": 'CONTROL         "SSL",IDC_SMTP_SSL',
-    "old mixed-audio disable-only branch": 'else EnableWindow(GetDlgItem(hDlg, IDC_FILTERAUDIO), FALSE); // If Monitor-Only == BST_INDETERMINATE\n',
-}
-for label, needle in checks.items():
-    if needle in (rc if "SSL" in label else pdw):
-        raise SystemExit(f"{label}: old pattern still present")
 
 print("Applied reported UI fixes successfully")
