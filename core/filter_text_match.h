@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -8,11 +9,12 @@ namespace pdw {
 enum class TextMatchMode {
     Contains,
     StartsWith,
-    Exact
+    Exact,
+    OrderedAnd
 };
 
 struct TextAlternative {
-    std::vector<std::string> terms; // '&' means all terms must match within this alternative
+    std::vector<std::string> terms;
     TextMatchMode mode = TextMatchMode::Contains;
 };
 
@@ -20,7 +22,19 @@ struct TextFilterExpression {
     std::vector<TextAlternative> alternatives; // ';' means OR
 };
 
+struct TextMatchSpan {
+    std::size_t position = 0;
+    std::size_t length = 0;
+};
+
+struct TextMatchResult {
+    bool matched = false;
+    std::vector<TextMatchSpan> spans;
+};
+
 TextFilterExpression ParseTextFilterExpression(const std::string& expression, bool exact_message);
+TextMatchResult FindTextFilterExpression(const TextFilterExpression& expression, const std::string& message,
+                                         std::size_t max_spans = 128);
 bool MatchTextFilterExpression(const TextFilterExpression& expression, const std::string& message);
 
 } // namespace pdw
