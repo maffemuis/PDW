@@ -86,6 +86,26 @@ int main() {
     expect(MatchTextFilterExpression(spaced_or, "P 1 GROTE BRAND WONING"), "semicolon alternatives trim surrounding whitespace");
     expect(MatchTextFilterExpression(spaced_or, "PELOTON TER PLAATSE"), "trimmed second semicolon alternative");
 
+    // Without ';', whitespace remains part of the legacy expression. Likewise,
+    // '&' terms and text after '^' must not be silently trimmed.
+    const auto legacy_spaced = ParseTextFilterExpression(" GROTE BRAND ", false);
+    expect(MatchTextFilterExpression(legacy_spaced, "P 1 GROTE BRAND WONING"),
+           "legacy single expression preserves surrounding spaces when present in message");
+    expect(!MatchTextFilterExpression(legacy_spaced, "P 1 GROTE BRAND-WONING"),
+           "legacy single expression does not trim surrounding spaces");
+
+    const auto amp_spaced = ParseTextFilterExpression("BRAND &INDUSTRIE", false);
+    expect(MatchTextFilterExpression(amp_spaced, "BRAND INDUSTRIE"),
+           "legacy ampersand preserves trailing space in first term");
+    expect(!MatchTextFilterExpression(amp_spaced, "BRAND-X INDUSTRIE"),
+           "legacy ampersand does not trim term whitespace");
+
+    const auto starts_spaced = ParseTextFilterExpression("^ BRAND", false);
+    expect(MatchTextFilterExpression(starts_spaced, " brand melding"),
+           "legacy start anchor preserves space immediately after caret");
+    expect(!MatchTextFilterExpression(starts_spaced, "BRAND MELDING"),
+           "legacy start anchor does not trim after caret");
+
     std::string long_term(1024, 'A');
     const auto bounded = ParseTextFilterExpression(long_term + ";BRAND", false);
     expect(MatchTextFilterExpression(bounded, long_term), "long bounded alternative remains matchable");
