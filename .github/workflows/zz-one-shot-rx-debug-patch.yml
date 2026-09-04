@@ -1,0 +1,225 @@
+name: One-shot RX diagnostics patch helper
+
+on:
+  push:
+    branches:
+      - modernization/decoded-message-boundary
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'chore: one-shot RX diagnostics patch helper'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact helper head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git branch --show-current)" = "modernization/decoded-message-boundary"
+
+      - name: Apply bounded Release RX diagnostics UI patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text(encoding='cp1252')
+              n = s.count(old)
+              if n != 1:
+                  raise SystemExit(f'{path}: expected exactly one anchor, found {n}')
+              p.write_text(s.replace(old, new, 1), encoding='cp1252', newline='')
+
+          replace_once('Headers/Resource.h',
+              '#define IDC_DEBUG_TEST            1181\n',
+              '#define IDC_DEBUG_TEST            1181\n'
+              '#define IDC_DEBUG_RXDETAIL        1182\n'
+              '#define IDC_DEBUG_RAW_START       1183\n'
+              '#define IDC_DEBUG_RAW_STOP        1184\n'
+              '#define IDC_DEBUG_COPY            1185\n')
+
+          replace_once('Rsrc.rc',
+              'DEBUGDLGBOX DIALOG 10, 10, 221, 86\n',
+              'DEBUGDLGBOX DIALOG 10, 10, 360, 190\n')
+          replace_once('Rsrc.rc',
+              '    GROUPBOX        "",IDC_STATIC,2,0,217,84\n',
+              '    GROUPBOX        "",IDC_STATIC,2,0,356,188\n')
+          replace_once('Rsrc.rc',
+              '    LTEXT           ".....",IDC_DEBUG_TEST,38,70,67,8,NOT WS_VISIBLE\nEND\n\nPRCANCEL DIALOG',
+              '    LTEXT           ".....",IDC_DEBUG_TEST,38,70,67,8,NOT WS_VISIBLE\n'
+              '    LTEXT           "Serial / RX diagnostics (Release-build):",IDC_STATIC,8,88,180,8\n'
+              '    EDITTEXT        IDC_DEBUG_RXDETAIL,8,99,344,62,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL\n'
+              '    PUSHBUTTON      "Start Raw RX Log",IDC_DEBUG_RAW_START,8,168,78,14\n'
+              '    PUSHBUTTON      "Stop Raw RX Log",IDC_DEBUG_RAW_STOP,92,168,78,14\n'
+              '    PUSHBUTTON      "Copy diagnostics",IDC_DEBUG_COPY,176,168,78,14\n'
+              'END\n\nPRCANCEL DIALOG')
+
+          replace_once('utils/rs232.cpp',
+              'static DWORD g_raw_log_start_tick = 0;\n',
+              'static DWORD g_raw_log_start_tick = 0;\nstatic DWORD g_diag_open_tick = 0;\n')
+          replace_once('utils/rs232.cpp',
+              '    g_rs232_diag.ring_wraps = 0;\n}\n',
+              '    g_rs232_diag.ring_wraps = 0;\n    g_diag_open_tick = GetTickCount();\n}\n')
+
+          old_fmt = '''int rs232_format_diagnostics(char *buffer, int buffer_len)
+{
+    RS232_DIAGNOSTICS d;
+    DWORD now;
+    DWORD age;
+    if(!buffer || buffer_len <= 0) return 0;
+    rs232_get_diagnostics(&d);
+    now = GetTickCount();
+    age = d.last_rx_tick ? now - d.last_rx_tick : 0;
+    return _snprintf(buffer, buffer_len - 1,
+        "Serial/RS232: %s COM%d\\r\\n"
+        "DCB: %lu baud, %u data, parity=%u, stop=%u, CTS=%s, DSR=%s, XON-in=%s, XON-out=%s\\r\\n"
+        "RX: bytes=%lu bits=%lu last=%s%lu ms queue=%lu ring=%lu wraps=%lu\\r\\n"
+        "Errors: read=%lu framing=%lu parity=%lu overrun=%lu\\r\\n"
+        "Raw RX log: %s bytes=%lu limit=%s",
+        d.connected ? "OPEN" : "CLOSED", d.com_port,
+        d.baud_rate, d.byte_size, d.parity, d.stop_bits,
+        d.cts_flow ? "on" : "off", d.dsr_flow ? "on" : "off",
+        d.xon_xoff_in ? "on" : "off", d.xon_xoff_out ? "on" : "off",
+        d.rx_bytes, d.rx_bits, d.last_rx_tick ? "" : "never/", age,
+        d.rx_queue_bytes, d.ring_position, d.ring_wraps,
+        d.read_errors, d.framing_errors, d.parity_errors, d.overrun_errors,
+        d.raw_log_enabled ? "ON" : "OFF", d.raw_log_bytes,
+        d.raw_log_limit_reached ? "REACHED" : "no");
+}
+'''
+          new_fmt = '''int rs232_format_diagnostics(char *buffer, int buffer_len)
+{
+    RS232_DIAGNOSTICS d;
+    DWORD now;
+    DWORD age;
+    DWORD elapsed;
+    DWORD bytes_per_sec;
+    int rc;
+    if(!buffer || buffer_len <= 0) return 0;
+    rs232_get_diagnostics(&d);
+    now = GetTickCount();
+    age = d.last_rx_tick ? now - d.last_rx_tick : 0;
+    elapsed = (d.connected && g_diag_open_tick) ? now - g_diag_open_tick : 0;
+    bytes_per_sec = elapsed ? (DWORD)(((ULONGLONG)d.rx_bytes * 1000ULL) / elapsed) : 0;
+    rc = _snprintf(buffer, buffer_len - 1,
+        "Serial/RS232: %s COM%d\\r\\n"
+        "DCB: %lu baud, %u data, parity=%u, stop=%u, CTS=%s, DSR=%s, XON-in=%s, XON-out=%s\\r\\n"
+        "RX: bytes=%lu rate=%lu B/s bits=%lu last=%s%lu ms queue=%lu ring=%lu wraps=%lu\\r\\n"
+        "Errors: read=%lu framing=%lu parity=%lu overrun=%lu\\r\\n"
+        "Raw RX log: %s bytes=%lu/%lu limit=%s",
+        d.connected ? "OPEN" : "CLOSED", d.com_port,
+        d.baud_rate, d.byte_size, d.parity, d.stop_bits,
+        d.cts_flow ? "on" : "off", d.dsr_flow ? "on" : "off",
+        d.xon_xoff_in ? "on" : "off", d.xon_xoff_out ? "on" : "off",
+        d.rx_bytes, bytes_per_sec, d.rx_bits, d.last_rx_tick ? "" : "never/", age,
+        d.rx_queue_bytes, d.ring_position, d.ring_wraps,
+        d.read_errors, d.framing_errors, d.parity_errors, d.overrun_errors,
+        d.raw_log_enabled ? "ON" : "OFF", d.raw_log_bytes, (DWORD)RS232_RAW_LOG_MAX_BYTES,
+        d.raw_log_limit_reached ? "REACHED" : "no");
+    buffer[buffer_len - 1] = 0;
+    return rc;
+}
+'''
+          replace_once('utils/rs232.cpp', old_fmt, new_fmt)
+
+          replace_once('PDW.cpp',
+              '\tchar rxqual[10]="- %";\n\tchar temp[32];\n',
+              '\tchar rxqual[10]="- %";\n\tchar temp[32];\n\tchar rxdiag[2048];\n')
+
+          replace_once('PDW.cpp',
+              '\t\tSetDlgItemText(hDlg, IDC_DEBUG_FLEXTIME, bFlexTIME_detected ? "Detected" : "Not detected");\n\n\t\tSendMessage(hDlg, WM_WININICHANGE, 0, 0L);\n',
+              '\t\tSetDlgItemText(hDlg, IDC_DEBUG_FLEXTIME, bFlexTIME_detected ? "Detected" : "Not detected");\n\n'
+              '\t\tif (Profile.comPortEnabled && Profile.comPortRS232)\n'
+              '\t\t{\n'
+              '\t\t\trs232_format_diagnostics(rxdiag, sizeof(rxdiag));\n'
+              '\t\t\tSetDlgItemText(hDlg, IDC_DEBUG_RXDETAIL, rxdiag);\n'
+              '\t\t}\n'
+              '\t\telse SetDlgItemText(hDlg, IDC_DEBUG_RXDETAIL, "Serial/RS232 diagnostics are inactive (input is not RS232).");\n\n'
+              '\t\tSendMessage(hDlg, WM_WININICHANGE, 0, 0L);\n')
+
+          replace_once('PDW.cpp',
+              '\t\tSetDlgItemText(hDlg, IDC_DEBUG_BLOCKBUFFER, szTEMP);\n\n\t\treturn (TRUE);\n',
+              '\t\tSetDlgItemText(hDlg, IDC_DEBUG_BLOCKBUFFER, szTEMP);\n\n'
+              '\t\tif (Profile.comPortEnabled && Profile.comPortRS232)\n'
+              '\t\t{\n'
+              '\t\t\tRS232_DIAGNOSTICS d;\n'
+              '\t\t\trs232_get_diagnostics(&d);\n'
+              '\t\t\trs232_format_diagnostics(rxdiag, sizeof(rxdiag));\n'
+              '\t\t\tSetDlgItemText(hDlg, IDC_DEBUG_RXDETAIL, rxdiag);\n'
+              '\t\t\tEnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_START), !d.raw_log_enabled);\n'
+              '\t\t\tEnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_STOP), d.raw_log_enabled);\n'
+              '\t\t}\n'
+              '\t\telse\n'
+              '\t\t{\n'
+              '\t\t\tSetDlgItemText(hDlg, IDC_DEBUG_RXDETAIL, "Serial/RS232 diagnostics are inactive (input is not RS232).");\n'
+              '\t\t\tEnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_START), FALSE);\n'
+              '\t\t\tEnableWindow(GetDlgItem(hDlg, IDC_DEBUG_RAW_STOP), FALSE);\n'
+              '\t\t}\n\n'
+              '\t\treturn (TRUE);\n')
+
+          replace_once('PDW.cpp',
+              '\t\tswitch (LOWORD(wParam))\n\t\t{\n\t\t\tcase IDCANCEL:\n',
+              '\t\tswitch (LOWORD(wParam))\n\t\t{\n'
+              '\t\t\tcase IDC_DEBUG_RAW_START:\n'
+              '\t\t\t\tif (!Profile.comPortEnabled || !Profile.comPortRS232)\n'
+              '\t\t\t\t{\n'
+              '\t\t\t\t\tMessageBox(hDlg, "Raw RX logging is available only for the explicit RS232 input path.", "PDW RX diagnostics", MB_OK | MB_ICONINFORMATION);\n'
+              '\t\t\t\t}\n'
+              '\t\t\t\telse if (!rs232_raw_log_start("pdw-rx-raw.log"))\n'
+              '\t\t\t\t{\n'
+              '\t\t\t\t\tMessageBox(hDlg, "Unable to create pdw-rx-raw.log. No logging was started.", "PDW RX diagnostics", MB_OK | MB_ICONERROR);\n'
+              '\t\t\t\t}\n'
+              '\t\t\t\tSendMessage(hDlg, WM_WININICHANGE, 0, 0L);\n'
+              '\t\t\t\tbreak;\n\n'
+              '\t\t\tcase IDC_DEBUG_RAW_STOP:\n'
+              '\t\t\t\trs232_raw_log_stop();\n'
+              '\t\t\t\tSendMessage(hDlg, WM_WININICHANGE, 0, 0L);\n'
+              '\t\t\t\tbreak;\n\n'
+              '\t\t\tcase IDC_DEBUG_COPY:\n'
+              '\t\t\t{\n'
+              '\t\t\t\tHGLOBAL hMem = NULL;\n'
+              '\t\t\t\trs232_format_diagnostics(rxdiag, sizeof(rxdiag));\n'
+              '\t\t\t\tif (OpenClipboard(hDlg))\n'
+              '\t\t\t\t{\n'
+              '\t\t\t\t\tEmptyClipboard();\n'
+              '\t\t\t\t\thMem = GlobalAlloc(GMEM_MOVEABLE, strlen(rxdiag) + 1);\n'
+              '\t\t\t\t\tif (hMem)\n'
+              '\t\t\t\t\t{\n'
+              '\t\t\t\t\t\tchar *p = (char *)GlobalLock(hMem);\n'
+              '\t\t\t\t\t\tif (p)\n'
+              '\t\t\t\t\t\t{\n'
+              '\t\t\t\t\t\t\tstrcpy(p, rxdiag);\n'
+              '\t\t\t\t\t\t\tGlobalUnlock(hMem);\n'
+              '\t\t\t\t\t\t\tif (SetClipboardData(CF_TEXT, hMem)) hMem = NULL;\n'
+              '\t\t\t\t\t\t}\n'
+              '\t\t\t\t\t}\n'
+              '\t\t\t\t\tCloseClipboard();\n'
+              '\t\t\t\t}\n'
+              '\t\t\t\tif (hMem) GlobalFree(hMem);\n'
+              '\t\t\t\tbreak;\n'
+              '\t\t\t}\n\n'
+              '\t\t\tcase IDCANCEL:\n')
+
+          print('bounded RX diagnostics UI patch applied')
+
+      - name: Verify scope and commit without force
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected=$'Headers/Resource.h\nPDW.cpp\nRsrc.rc\nutils/rs232.cpp'
+          test "$changed" = "$expected"
+          git rm .github/workflows/zz-one-shot-rx-debug-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Headers/Resource.h PDW.cpp Rsrc.rc utils/rs232.cpp
+          git commit -m "P1 RX: expose Release diagnostics in F12"
+          git push origin HEAD:modernization/decoded-message-boundary
