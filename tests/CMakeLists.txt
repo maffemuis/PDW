@@ -68,6 +68,24 @@ add_test(
     COMMAND pdw_smtp_protocol_test
 )
 
+add_executable( pdw_rx_diagnostics_test
+    utils/rx_diagnostics_test.cpp
+    ${CMAKE_SOURCE_DIR}/utils/rx_diagnostics.cpp
+)
+
+target_include_directories( pdw_rx_diagnostics_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/utils
+)
+
+target_link_libraries( pdw_rx_diagnostics_test
+    User32.lib
+)
+
+add_test(
+    NAME pdw_rx_diagnostics
+    COMMAND pdw_rx_diagnostics_test
+)
+
 add_executable( pdw_preservation_capture_test
     preservation/capture_test.cpp
     ${CMAKE_SOURCE_DIR}/utils/preservation_capture.cpp
