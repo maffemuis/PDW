@@ -1,0 +1,29 @@
+name: One-shot RX diagnostics patch
+on:
+  push:
+    branches: [modernization/decoded-message-boundary]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply staged patch
+        run: python .github/scripts/zz-one-shot-rx-debug-patch.py
+      - name: Verify and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected=$'Headers/Resource.h\nPDW.cpp\nRsrc.rc\nutils/rs232.cpp'
+          test "$changed" = "$expected"
+          git rm .github/scripts/zz-one-shot-rx-debug-patch.py .github/workflows/zz-one-shot-rx-debug-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Headers/Resource.h PDW.cpp Rsrc.rc utils/rs232.cpp
+          git commit -m "P1 RX: expose Release diagnostics in F12"
+          git push origin HEAD:modernization/decoded-message-boundary
