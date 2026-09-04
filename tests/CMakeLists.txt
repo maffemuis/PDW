@@ -207,6 +207,19 @@ if(PDW_PRESERVATION_PYTHON)
     )
 
     set_tests_properties(pdw_preservation_p2000_numeric_binary_remainder PROPERTIES TIMEOUT 40)
+
+    add_test(
+        NAME pdw_preservation_p2000_scenario
+        COMMAND ${CMAKE_COMMAND}
+            -DPDW_EXECUTABLE=$<TARGET_FILE:PDW>
+            -DCOMPARE_EXECUTABLE=$<TARGET_FILE:pdw_preservation_compare>
+            -DPYTHON_EXECUTABLE=${PDW_PRESERVATION_PYTHON}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DOUTPUT_DIR=${CMAKE_BINARY_DIR}/preservation-p2000-scenario
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/preservation/run_p2000_scenario.cmake
+    )
+
+    set_tests_properties(pdw_preservation_p2000_scenario PROPERTIES TIMEOUT 120)
 else()
     message(WARNING "Python was not found; MOBITEX and P2000 generated preservation replay tests are unavailable")
 endif()
