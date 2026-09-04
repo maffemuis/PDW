@@ -315,6 +315,7 @@
 #include "utils\ostype.h"
 #include "utils\smtp.h"
 #include "core\filter_text_storage.h"
+#include "core\filter_text_match.h"
 
 #include "headers\helper_funcs.h"	// Extra functies van Andreas
 
@@ -8295,11 +8296,13 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 					return (FALSE);
 				}
 
-				if ((strchr(filter.text, '^') - filter.text) > 0)
+				const bool exact_message = IsDlgButtonChecked(hDlg, IDC_FILTERMATCHEXACT) == BST_CHECKED;
+				const size_t invalid_caret = pdw::FindInvalidTextFilterCaret(filter.text, exact_message);
+				if (invalid_caret != std::string::npos)
 				{
-					MessageBox(hDlg, "The character ^ can only be used\nat the beginning of the line","PDW Filter Text", MB_ICONERROR);
+					MessageBox(hDlg, "The character ^ can only be used at the beginning of each ; alternative","PDW Filter Text", MB_ICONERROR);
 					SetFocus(GetDlgItem(hDlg, IDC_FILTERTEXT));
-					pos = strchr(filter.text, '^') - filter.text;
+					pos = (int)invalid_caret;
 					SendDlgItemMessage(hDlg, IDC_FILTERTEXT, EM_SETSEL, pos, pos+1);
 					return (FALSE);
 				}
@@ -8433,7 +8436,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 					Profile.filters.insert(Profile.filters.begin() + index, filter);
 				}
 
-				if (strncmp(temp_cap, "Don't cha", 9))	// If not "Don't cha(nge)"
+				if (!multiple_edit && strncmp(temp_cap, "Don't cha", 9))	// Capcode is immutable during multi-edit
 				{
 					strcpy(Profile.filters[index].capcode, filter.capcode);
 				}
