@@ -230,7 +230,7 @@ void POCSAG::process_word(int fn2)
 
 		int restbits = (20*wordc) % REST_ALPHA_BITS_LEN;
 		int startbit = 21-restbits;
-		strncpy(szRestAlphaBits, &ob[startbit], restbits);
+		memcpy(szRestAlphaBits, &ob[startbit], restbits);
 		szRestAlphaBits[restbits] = '\0';
 	}
 	else		// MSB bit = 0 means address
@@ -379,15 +379,13 @@ int POCSAG::GetMessageType()
 
 	if (wordc < 7)					// If we have less than 7 messagewords
 	{
-//		restbits = (20*wordc) % 7;
-//		startbit = 21-restbits;
-//		strncpy(szRestAlphaBits, &ob[startbit], restbits);
-//		szRestAlphaBits[restbits] = '\0';
-//		int test = szRestAlphaBits[0] + szRestAlphaBits[1] + szRestAlphaBits[2] + szRestAlphaBits[3] + szRestAlphaBits[4] + szRestAlphaBits[5] + szRestAlphaBits[6];
-		if (strchr(szRestAlphaBits, char(1)))
-//		if (strstr(szRestAlphaBits, "1")) 
+		int restbits = (20*wordc) % REST_ALPHA_BITS_LEN;
+		for (i=0; i<restbits; i++)
 		{
-			return(TYPE_NUMERIC);	// Last (wordc % 7) bits != 0, so this is Numeric
+			if (szRestAlphaBits[i] == 1)
+			{
+				return(TYPE_NUMERIC);	// Non-zero trailing bits cannot be alpha padding.
+			}
 		}
 	}
 	else return(TYPE_ALPHA);		// More than 6 messagewords, must be alphanumeric
@@ -398,7 +396,7 @@ int POCSAG::GetMessageType()
 	}
 
 	// Store bits as numeric characters in array num[]
-	// Penalize "bad" numeric characters 'U','[',']','*','-' and ' '
+	// and penalize "bad" numeric characters 'U','[',']','*','-' and ' '
 	// The characters stored in array num[] have already the correct ASCII format
 	for (i=0; i<nnum; i++)
 	{
