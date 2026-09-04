@@ -72,21 +72,13 @@ jobs:
             Remove-Item Env:PDW_PRESERVATION_REPLAY_EXIT -ErrorAction SilentlyContinue
           }
 
-      - name: Assert decoder stays within bounded message storage
+      - name: Assert decoder fails closed at bounded message storage
         shell: pwsh
         run: |
           $rows = @(Get-Content ".\preservation-local\p2000-1200-bounds.actual.jsonl" | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
-          if ($rows.Count -gt 1) {
-            throw "over-boundary input produced unexpected multiple plausible messages: $($rows.Count)"
-          }
-          if ($rows.Count -eq 1) {
-            $message = [string]$rows[0].message
-            if ($message.Length -gt 5120) {
-              throw "decoder exposed $($message.Length) characters beyond MAX_STR_LEN=5120"
-            }
-            if ($message -notmatch '^A*$') {
-              throw "decoder emitted corrupted/non-synthetic payload after bounds pressure"
-            }
+          if ($rows.Count -ne 0) {
+            $lengths = @($rows | ForEach-Object { ([string]$_.message).Length }) -join ","
+            throw "over-boundary POCSAG input must be rejected, but decoder emitted $($rows.Count) plausible message(s) (lengths=$lengths)"
           }
 
       - name: Upload bounds evidence
