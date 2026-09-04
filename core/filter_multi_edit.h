@@ -13,6 +13,8 @@ struct FilterEditRow {
 };
 
 struct FilterMultiEdit {
+    bool change_capcode = false;
+    std::string capcode;
     bool change_text = false;
     std::string text;
     bool change_label = false;

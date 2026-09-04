@@ -12,14 +12,13 @@ void ApplyFilterMultiEdit(std::vector<FilterEditRow>& rows,
         if (index >= rows.size()) continue;
 
         FilterEditRow& row = rows[index];
-        const std::string original_capcode = row.capcode;
 
+        if (edit.change_capcode) row.capcode = edit.capcode;
         if (edit.change_text) row.text = edit.text;
         if (edit.change_label) row.label = edit.label;
         if (edit.change_match_exact_msg) row.match_exact_msg = edit.match_exact_msg;
 
-        // Multi-edit must never collapse distinct capcodes into one shared value.
-        row.capcode = original_capcode;
+        // Capcodes are preserved by default; only an explicit override changes them.
     }
 }
 

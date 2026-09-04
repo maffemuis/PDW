@@ -7991,7 +7991,9 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 
 		if (filter.type != TEXT_FILTER)
 		{
-			if (!multiple_edit) EnableWindow(GetDlgItem(hDlg, IDC_FILTERCAPCODE), true);
+			// In multi-edit, mixed addresses display "Don't change" but remain editable.
+			// Typing an address is therefore an explicit override for the selection.
+			EnableWindow(GetDlgItem(hDlg, IDC_FILTERCAPCODE), true);
 			EnableWindow(GetDlgItem(hDlg, IDC_FILTERTEXT), capcode);
 		}
 		else	// if TEXT filter
@@ -8476,7 +8478,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 					Profile.filters.insert(Profile.filters.begin() + index, filter);
 				}
 
-				if (!multiple_edit && strncmp(temp_cap, "Don't cha", 9))	// Capcode is immutable during multi-edit
+				if (strncmp(temp_cap, "Don't cha", 9))	// Explicit address override; "Don't change" preserves each row
 				{
 					strcpy(Profile.filters[index].capcode, filter.capcode);
 				}

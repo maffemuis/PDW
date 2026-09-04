@@ -64,6 +64,27 @@ int main() {
     expect(rows[7].label == original_label, "unchanged label preserved");
     expect(rows[7].capcode == original_capcode, "single edit preserves capcode");
 
+    // Explicit capcode override is allowed and applies only when requested.
+    pdw::FilterMultiEdit capcode_override;
+    capcode_override.change_capcode = true;
+    capcode_override.capcode = "1234567";
+    std::vector<std::size_t> many;
+    for (std::size_t i = 0; i < 25; ++i) many.push_back(i);
+    pdw::ApplyFilterMultiEdit(rows, many, capcode_override);
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        expect(rows[i].capcode == "1234567", "explicit multi-edit capcode override applies to all selected rows");
+    }
+
+    // No-change semantics remain the default after an explicit override.
+    pdw::FilterMultiEdit no_change;
+    no_change.change_text = true;
+    no_change.text = "FOLLOWUP";
+    pdw::ApplyFilterMultiEdit(rows, many, no_change);
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        expect(rows[i].capcode == "1234567", "default multi-edit keeps capcodes unchanged");
+        expect(rows[i].text == "FOLLOWUP", "other fields can change without touching capcode");
+    }
+
     std::cout << "filter_multi_edit: OK" << std::endl;
     return 0;
 }
