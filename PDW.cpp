@@ -314,6 +314,7 @@
 #include "utils\debug.h"
 #include "utils\ostype.h"
 #include "utils\smtp.h"
+#include "core\filter_text_storage.h"
 
 #include "headers\helper_funcs.h"	// Extra functies van Andreas
 
@@ -9840,9 +9841,15 @@ bool ReadFilters(char *szFilters, PPROFILE pProfile, bool bNew)
 
 							if (szLine[pos+1] != '"')
 							{
-								strncpy(filter.text, &szLine[pos+1], strlen(szLine));
-								filter.text[strchr(filter.text, '"') - filter.text] = 0;
-								pos += strlen(filter.text) + 1;	// + 1 to start at last "
+								pdw::LegacyFilterTextParseResult parsed_text =
+									pdw::ExtractLegacyQuotedFilterText(szLine, pos, FILTER_TEXT_LEN);
+								if (!parsed_text.ok)
+								{
+									fclose(pFile);
+									return false;
+								}
+								strcpy(filter.text, parsed_text.text.c_str());
+								pos = parsed_text.closing_quote;
 							}
 							else filter.text[0] = 0;
 
