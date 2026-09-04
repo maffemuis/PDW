@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE=f62a4b671d1198f6561242e0e1e8f976b24a86a4
+          BASE=ffcf8b139114d88b11b2f537ee7cd1deb2b73092
           test "$(git rev-parse HEAD^)" = "$BASE"
           test "${GITHUB_REF_NAME}" = "modernization/filter-editor-usability"
           git fetch --no-tags origin modernization/synthetic-groupcall-guard
@@ -37,144 +37,89 @@ jobs:
             mkdir -p "$(dirname "$path")"
             git show "$SRC:$path" > "$path"
           done
-
+          git show "$SRC:tests/CMakeLists.txt" > /tmp/synthetic-tests-cmake.txt
           python3 - <<'PY'
           from pathlib import Path
 
-          def add_after_utf8(path, anchor, addition):
+          def add_after(path, anchor, addition):
               p = Path(path)
               s = p.read_text(encoding='utf-8')
               if addition.strip() in s:
                   return
-              if s.count(anchor) != 1:
-                  raise SystemExit(f'{path}: expected exactly one anchor, got {s.count(anchor)}')
+              count = s.count(anchor)
+              if count != 1:
+                  raise SystemExit(f'{path}: anchor count {count}')
               p.write_text(s.replace(anchor, anchor + addition, 1), encoding='utf-8')
 
-          add_after_utf8('core/CMakeLists.txt', '  ${CMAKE_CURRENT_SOURCE_DIR}/filter_text_storage.h\n', '  ${CMAKE_CURRENT_SOURCE_DIR}/legacy_message_projection.h\n  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_message.h\n  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection_policy.h\n')
-          add_after_utf8('core/CMakeLists.txt', '  ${CMAKE_CURRENT_SOURCE_DIR}/filter_text_storage.cpp\n', '  ${CMAKE_CURRENT_SOURCE_DIR}/legacy_message_projection.cpp\n  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_message.cpp\n  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection_policy.cpp\n')
-          add_after_utf8('utils/CMakeLists.txt', '  ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.h\n', '  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection.h\n')
-          add_after_utf8('utils/CMakeLists.txt', '  ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.cpp\n', '  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection.cpp\n')
+          add_after('core/CMakeLists.txt', '  ${CMAKE_CURRENT_SOURCE_DIR}/filter_text_storage.h\n', '  ${CMAKE_CURRENT_SOURCE_DIR}/legacy_message_projection.h\n  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_message.h\n  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection_policy.h\n')
+          add_after('core/CMakeLists.txt', '  ${CMAKE_CURRENT_SOURCE_DIR}/filter_text_storage.cpp\n', '  ${CMAKE_CURRENT_SOURCE_DIR}/legacy_message_projection.cpp\n  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_message.cpp\n  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection_policy.cpp\n')
+          add_after('utils/CMakeLists.txt', '  ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.h\n', '  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection.h\n')
+          add_after('utils/CMakeLists.txt', '  ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.cpp\n', '  ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection.cpp\n')
 
           tests = Path('tests/CMakeLists.txt')
-          t = tests.read_text(encoding='utf-8')
-          if 'pdw_synthetic_message_test' not in t:
+          current_tests = tests.read_text(encoding='utf-8')
+          if 'pdw_synthetic_message_test' not in current_tests:
+              source_tests = Path('/tmp/synthetic-tests-cmake.txt').read_text(encoding='utf-8')
+              start = source_tests.index('add_executable( pdw_synthetic_message_test')
+              end = source_tests.index('add_executable( pdw_filter_text_match_test', start)
+              block = source_tests[start:end]
               anchor = 'add_test(\n    NAME pdw_decoded_message\n    COMMAND pdw_decoded_message_test\n)\n\n'
-              if t.count(anchor) != 1:
+              if current_tests.count(anchor) != 1:
                   raise SystemExit('tests/CMakeLists.txt: decoded-message anchor mismatch')
-              block = '''add_executable( pdw_synthetic_message_test
-    core/synthetic_message_test.cpp
-    ${CMAKE_SOURCE_DIR}/core/decoded_message.cpp
-    ${CMAKE_SOURCE_DIR}/core/synthetic_message.cpp
-)
-
-target_include_directories( pdw_synthetic_message_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/core
-)
-
-add_test(
-    NAME pdw_synthetic_message
-    COMMAND pdw_synthetic_message_test
-)
-
-add_executable( pdw_synthetic_injection_policy_test
-    core/synthetic_injection_policy_test.cpp
-    ${CMAKE_SOURCE_DIR}/core/synthetic_injection_policy.cpp
-)
-
-target_include_directories( pdw_synthetic_injection_policy_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/core
-)
-
-add_test(
-    NAME pdw_synthetic_injection_policy
-    COMMAND pdw_synthetic_injection_policy_test
-)
-
-add_executable( pdw_legacy_message_projection_test
-    core/legacy_message_projection_test.cpp
-    ${CMAKE_SOURCE_DIR}/core/decoded_message.cpp
-    ${CMAKE_SOURCE_DIR}/core/legacy_message_projection.cpp
-)
-
-target_include_directories( pdw_legacy_message_projection_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/core
-)
-
-add_test(
-    NAME pdw_legacy_message_projection
-    COMMAND pdw_legacy_message_projection_test
-)
-
-add_executable( pdw_synthetic_mail_contract_test
-    core/synthetic_mail_contract_test.cpp
-    ${CMAKE_SOURCE_DIR}/core/decoded_message.cpp
-    ${CMAKE_SOURCE_DIR}/core/synthetic_message.cpp
-    ${CMAKE_SOURCE_DIR}/core/legacy_message_projection.cpp
-)
-
-target_include_directories( pdw_synthetic_mail_contract_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/core
-)
-
-add_test(
-    NAME pdw_synthetic_mail_contract
-    COMMAND pdw_synthetic_mail_contract_test
-)
-
-'''
-              tests.write_text(t.replace(anchor, anchor + block, 1), encoding='utf-8')
+              tests.write_text(current_tests.replace(anchor, anchor + block, 1), encoding='utf-8')
 
           def patch_latin1(path, anchor, addition, token):
               p = Path(path)
               s = p.read_bytes().decode('latin-1')
               if token in s:
                   return
-              if s.count(anchor) != 1:
-                  raise SystemExit(f'{path}: anchor mismatch ({s.count(anchor)})')
+              count = s.count(anchor)
+              if count != 1:
+                  raise SystemExit(f'{path}: anchor count {count}')
               p.write_bytes(s.replace(anchor, anchor + addition, 1).encode('latin-1'))
 
-          res = Path('Headers/Resource.h')
-          res_bytes = res.read_bytes()
-          res_nl = '\r\n' if b'\r\n' in res_bytes else '\n'
-          patch_latin1('Headers/Resource.h', '#define IDM_FILTERCOMMANDFILE      245' + res_nl, '#define IDM_TEST_MESSAGE            246' + res_nl, 'IDM_TEST_MESSAGE')
+          resource = Path('Headers/Resource.h')
+          resource_text = resource.read_bytes().decode('latin-1')
+          resource_nl = '\r\n' if '\r\n' in resource_text else '\n'
+          patch_latin1('Headers/Resource.h', '#define IDM_FILTERCOMMANDFILE      245' + resource_nl, '#define IDM_TEST_MESSAGE            246' + resource_nl, 'IDM_TEST_MESSAGE')
 
           rsrc = Path('Rsrc.rc')
-          rs = rsrc.read_bytes().decode('latin-1')
-          if 'Send TEST/SYNTHETIC message...' not in rs:
-              nl = '\r\n' if '\r\n' in rs else '\n'
+          rsrc_text = rsrc.read_bytes().decode('latin-1')
+          if 'Send TEST/SYNTHETIC message...' not in rsrc_text:
+              nl = '\r\n' if '\r\n' in rsrc_text else '\n'
               anchor = '        MENUITEM "Filter Command File",         IDM_FILTERCOMMANDFILE' + nl
-              if rs.count(anchor) != 1:
-                  raise SystemExit(f'Rsrc.rc: menu anchor mismatch ({rs.count(anchor)})')
-              add = '        MENUITEM SEPARATOR' + nl + '        MENUITEM "Send TEST/SYNTHETIC message...", IDM_TEST_MESSAGE' + nl
-              rsrc.write_bytes(rs.replace(anchor, anchor + add, 1).encode('latin-1'))
+              if rsrc_text.count(anchor) != 1:
+                  raise SystemExit('Rsrc.rc: menu anchor mismatch')
+              addition = '        MENUITEM SEPARATOR' + nl + '        MENUITEM "Send TEST/SYNTHETIC message...", IDM_TEST_MESSAGE' + nl
+              rsrc.write_bytes(rsrc_text.replace(anchor, anchor + addition, 1).encode('latin-1'))
 
           pdw = Path('PDW.cpp')
-          ps = pdw.read_bytes().decode('latin-1')
-          nl = '\r\n' if '\r\n' in ps else '\n'
-          if 'utils\\synthetic_injection.h' not in ps:
-              anchor = '#include "utils\\smtp.h"' + nl
-              if ps.count(anchor) != 1:
-                  raise SystemExit(f'PDW.cpp: include anchor mismatch ({ps.count(anchor)})')
-              ps = ps.replace(anchor, anchor + '#include "utils\\synthetic_injection.h"' + nl, 1)
-          if 'case IDM_TEST_MESSAGE:' not in ps:
+          pdw_text = pdw.read_bytes().decode('latin-1')
+          nl = '\r\n' if '\r\n' in pdw_text else '\n'
+          if 'utils\\synthetic_injection.h' not in pdw_text:
+              include_anchor = '#include "utils\\smtp.h"' + nl
+              if pdw_text.count(include_anchor) != 1:
+                  raise SystemExit('PDW.cpp: include anchor mismatch')
+              pdw_text = pdw_text.replace(include_anchor, include_anchor + '#include "utils\\synthetic_injection.h"' + nl, 1)
+          if 'case IDM_TEST_MESSAGE:' not in pdw_text:
               marker = 'case IDM_ABOUT:'
-              if ps.count(marker) != 1:
-                  raise SystemExit(f'PDW.cpp: about marker mismatch ({ps.count(marker)})')
-              start = ps.index(marker)
-              end = ps.find('break;', start)
+              if pdw_text.count(marker) != 1:
+                  raise SystemExit('PDW.cpp: about marker mismatch')
+              start = pdw_text.index(marker)
+              end = pdw_text.find('break;', start)
               if end < 0:
-                  raise SystemExit('PDW.cpp: could not locate About break')
-              end = ps.find(nl, end)
+                  raise SystemExit('PDW.cpp: About break missing')
+              end = pdw_text.find(nl, end)
               if end < 0:
-                  raise SystemExit('PDW.cpp: could not locate About line ending')
+                  raise SystemExit('PDW.cpp: About line ending missing')
               end += len(nl)
-              indent = '\t\t\t\t'
-              block = (nl + indent + 'case IDM_TEST_MESSAGE:' + nl + indent + '\tif (MessageBox(hWnd, "Inject a clearly marked TEST/SYNTHETIC message through the normal filter/action pipeline?\\n\\nCapcode: 1234567\\nText: PDW TEST MESSAGE", "PDW Synthetic Test", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES)' + nl + indent + '\t{' + nl + indent + '\t\tif (!pdw::InjectDefaultSyntheticTestMessage())' + nl + indent + '\t\t{' + nl + indent + '\t\t\tMessageBox(hWnd, "Synthetic test injection was rejected safely.", "PDW Synthetic Test", MB_OK | MB_ICONERROR);' + nl + indent + '\t\t}' + nl + indent + '\t}' + nl + indent + '\tbreak;' + nl)
-              ps = ps[:end] + block + ps[end:]
-          pdw.write_bytes(ps.encode('latin-1'))
+              lines = ['', '\t\t\t\tcase IDM_TEST_MESSAGE:', '\t\t\t\t\tif (MessageBox(hWnd, "Inject a clearly marked TEST/SYNTHETIC message through the normal filter/action pipeline?\\n\\nCapcode: 1234567\\nText: PDW TEST MESSAGE", "PDW Synthetic Test", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES)', '\t\t\t\t\t{', '\t\t\t\t\t\tif (!pdw::InjectDefaultSyntheticTestMessage())', '\t\t\t\t\t\t{', '\t\t\t\t\t\t\tMessageBox(hWnd, "Synthetic test injection was rejected safely.", "PDW Synthetic Test", MB_OK | MB_ICONERROR);', '\t\t\t\t\t\t}', '\t\t\t\t\t}', '\t\t\t\t\tbreak;']
+              block = nl.join(lines) + nl
+              pdw_text = pdw_text[:end] + block + pdw_text[end:]
+          pdw.write_bytes(pdw_text.encode('latin-1'))
           PY
 
-      - name: Verify, remove helper, commit and push
+      - name: Verify remove helper commit and push
         shell: bash
         run: |
           set -euo pipefail
