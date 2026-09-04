@@ -17,6 +17,7 @@
 #include "headers\gfx.h"
 #include "headers\misc.h"
 #include "headers\helper_funcs.h"
+#include "utils\rx_diagnostics.h"
 
 #define TYPE_TONE_ONLY	0x01
 #define TYPE_NUMERIC	0x02
@@ -111,10 +112,12 @@ void POCSAG::frame(int bit)
 	if (!bSynced) // find pocsag sync sequence - sync up if there are less than 5 mismatched bits
 	{
 		nh = nOnes(sr0 ^ 0x7CD2) + nOnes(sr1 ^ 0x15D8);
+		RxDiagnosticsOnSyncSearchDistance((nh > 16) ? (32 - nh) : nh, nh > 16 ? TRUE : FALSE);
 
 		if (nh < 5)
 		{
 			bSynced = true;
+			RxDiagnosticsOnSyncFound(nh, FALSE);
 
 			iWordNumber = 0;
 			cc = 0;
@@ -124,6 +127,7 @@ void POCSAG::frame(int bit)
 			InvertData();	// Invert receive polarity
 
 			bSynced = true;
+			RxDiagnosticsOnSyncFound(32 - nh, TRUE);
 
 			iWordNumber = 0;
 			cc = 0;
@@ -162,6 +166,8 @@ void POCSAG::frame(int bit)
 		}
 		if (iWordNumber == 16)
 		{
+			RxDiagnosticsOnSyncLost();
+			RxDiagnosticsOnSyncSearch();
 			bSynced = false;	// if block count is zero go back to look for sync word
 		}
 	}
@@ -172,6 +178,7 @@ void POCSAG::process_word(int fn2)
 {
 	static unsigned int du;
 	int i, errl = ecd();		// run error correcting routine
+	RxDiagnosticsOnCodeword(errl);
 
 	if (errl < 2) pocbit = 170;
 

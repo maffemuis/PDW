@@ -5,6 +5,7 @@
 #include "..\utils\ostype.h"
 #include "..\headers\pdw.h"
 #include "rs232.h"
+#include "rx_diagnostics.h"
 
 #define SLICER_BUFSIZE 10000
 
@@ -83,6 +84,7 @@ int rs232_connect(const SLICER_IN_STR *pInSlicer, SLICER_OUT_STR *pOutSlicer)
 	if(m_ComPortHandle == INVALID_HANDLE_VALUE)
 	{
 	    OUTPUTDEBUGMSG((("ERROR: CreateFile() %08lX!\n"), GetLastError()));
+		RxDiagnosticsOnComOpenError(GetLastError());
 		CloseHandle(m_ComPortHandle);
 		return RS232_NO_DUT;
 	}
@@ -134,9 +136,13 @@ int rs232_connect(const SLICER_IN_STR *pInSlicer, SLICER_OUT_STR *pOutSlicer)
 
 	if(!SetCommState(m_ComPortHandle,&m_comDCB)) {
 	    OUTPUTDEBUGMSG((("ERROR: GetCommState() %08lX!\n"), GetLastError()));
+		RxDiagnosticsOnComOpenError(GetLastError());
 		CloseHandle(m_ComPortHandle);
 		return RS232_NO_DUT;
 	}
+	DCB verifiedDCB = {};
+	if(GetCommState(m_ComPortHandle, &verifiedDCB)) RxDiagnosticsOnComOpen(pInSlicer->com_port, &verifiedDCB);
+	else RxDiagnosticsOnComOpen(pInSlicer->com_port, &m_comDCB);
 	if(!SetCommMask(m_ComPortHandle, bOrgcomPortRS232 ? 0 : EV_CTS | EV_DSR | EV_RLSD)) {
 	    OUTPUTDEBUGMSG((("ERROR: SetCommMask() %08lX!\n"), GetLastError()));
 		CloseHandle(m_ComPortHandle);
@@ -208,6 +214,7 @@ int rs232_disconnect()
 		OUTPUTDEBUGMSG(("main thread : handle closed.\n"));
 		m_ComPortHandle = INVALID_HANDLE_VALUE;
 		m_bConnectedToComport = FALSE;
+		RxDiagnosticsOnComClosed();
 	}
 	return(RS232_SUCCESS) ;
 }
@@ -252,9 +259,15 @@ int rs232_read(void)
 	if(!ReadFile(m_ComPortHandle, byData, sizeof(byData), &dwRead, 0))
 	{
 		OUTPUTDEBUGMSG((("rs232_read : Error in reading 0x%0x!\n"), GetLastError()));
+		RxDiagnosticsOnReadError(GetLastError());
 		PurgeComm(m_ComPortHandle, PURGE_RXCLEAR) ;
 	}
 	else {
+		DWORD commErrors = 0;
+		COMSTAT commStatus = {};
+		if(ClearCommError(m_ComPortHandle, &commErrors, &commStatus))
+			RxDiagnosticsOnCommStatus(commErrors, commStatus.cbInQue);
+		RxDiagnosticsOnRead(byData, dwRead, Profile.fourlevel ? TRUE : FALSE);
 		for(int i=0; i<dwRead; i++) {
 			for (int j=7; j>=0; j--)
 			{

@@ -24,6 +24,7 @@
 #include "headers\ermes.h"
 #include "headers\helper_funcs.h"
 #include "utils\debug.h"
+#include "utils\rx_diagnostics.h"
 
 FILE *pd_raw_fp = NULL;		// Debug - Raw data file for logging POCSAG/FLEX symbol data.
 
@@ -103,6 +104,8 @@ void pd_reset_all(void)
 	pd_dsr=0, pd_lcw=0;
 	pd_ct5=0, pd_ct12=0, pd_ct16=0, pd_ct24=0, pd_dinc=0;
 	pd_clk=0.0, pd_rer=0.0;
+	RxDiagnosticsOnPreambleCounters(0, 0, 0);
+	RxDiagnosticsOnPocsagInactive();
 
 	mb.reset();				// reset mobitex routines
 	acars.reset();			// reset acars routines
@@ -470,6 +473,7 @@ void pdw_decode_ermes(void)
 // Decode POCSAG/FLEX/ACARS/MOBITEX/ERMES.....
 void pdw_decode(void)
 {
+	RxDiagnosticsSetConfiguredInvert(Profile.invert ? TRUE : FALSE);
 	if (bRecording)	// Hwi Added for recording function
 	{
 		static unsigned int last_write;
@@ -549,6 +553,7 @@ void pdw_decode(void)
 
 			if ((pd_dinc > 1976) && (pd_dinc < 2674)) pd_ct5++;
 			else if (pd_ct5 > 5) pd_ct5 -= 3;
+			RxDiagnosticsOnPreambleCounters(pd_ct5, pd_ct12, pd_ct24);
 
 			if (pd_ct24 > 180)
 			{
@@ -559,6 +564,7 @@ void pdw_decode(void)
 					display_showmo(MODE_POCSAG+MODE_P2400);
 					ct_bit = Profile.comPortRS232 ? 500 : 496.4;
 					pocsag_baud_rate = STAT_POCSAG2400;
+					RxDiagnosticsOnRateDetected(2400);
 
 					if (!pocbit)
 					{
@@ -578,6 +584,7 @@ void pdw_decode(void)
 					display_showmo(MODE_POCSAG+MODE_P1200);
 					ct_bit = Profile.comPortRS232 ? 1000 : 993.0;
 					pocsag_baud_rate = STAT_POCSAG1200;
+					RxDiagnosticsOnRateDetected(1200);
 
 					if (!pocbit)
 					{
@@ -597,6 +604,7 @@ void pdw_decode(void)
 					display_showmo(MODE_POCSAG+MODE_P512);
 					ct_bit = Profile.comPortRS232 ? 2000 : 2327.4;
 					pocsag_baud_rate = STAT_POCSAG512;
+					RxDiagnosticsOnRateDetected(512);
 
 					if (!pocbit)
 					{
@@ -641,6 +649,8 @@ void pdw_decode(void)
 				if (pocbit == 0)				// we have just dropped out of POCSAG mode
 				{
 					display_showmo(MODE_IDLE);
+					RxDiagnosticsOnSyncLost();
+					RxDiagnosticsOnPocsagInactive();
 					pocsag.frame(-1);			// reset pocsag routine
 					ct_bit = ct1600;			// reset rcv clock to 1600 baud
 					rcv_clkt = rcv_clkt_hi;		// widen up rcv clk again
@@ -675,6 +685,8 @@ void pdw_decode(void)
 		if (pocbit == 0)				// we have just dropped out of POCSAG mode
 		{
 			display_showmo(MODE_IDLE);
+			RxDiagnosticsOnSyncLost();
+			RxDiagnosticsOnPocsagInactive();
 			pocsag.frame(-1);			// reset pocsag routine
 			ct_bit = ct1600;			// reset rcv clock to 1600 baud
 			rcv_clkt = rcv_clkt_hi;		// widen up rcv clk again
