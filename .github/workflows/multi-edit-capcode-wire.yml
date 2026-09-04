@@ -1,0 +1,91 @@
+name: Wire multi-edit capcode override
+
+on:
+  push:
+    branches:
+      - modernization/filter-editor-usability
+    paths:
+      - .github/workflows/multi-edit-capcode-wire.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify exact parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "15cf0339f81c3473299ea7e5d68c5cd161272f35"
+          test "${GITHUB_REF_NAME}" = "modernization/filter-editor-usability"
+
+      - name: Patch multi-edit capcode semantics byte-preserving
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def patch(path, old, new, count=1):
+              p = Path(path)
+              data = p.read_bytes().decode('latin-1')
+              actual = data.count(old)
+              if actual != count:
+                  raise SystemExit(f'{path}: expected {count} matches, got {actual}')
+              data = data.replace(old, new, count)
+              p.write_bytes(data.encode('latin-1'))
+
+          patch('core/filter_multi_edit.h',
+                'struct FilterMultiEdit {\n    bool change_text = false;\n',
+                'struct FilterMultiEdit {\n    bool change_capcode = false;\n    std::string capcode;\n    bool change_text = false;\n')
+
+          patch('core/filter_multi_edit.cpp',
+                '        FilterEditRow& row = rows[index];\n        const std::string original_capcode = row.capcode;\n\n        if (edit.change_text) row.text = edit.text;\n',
+                '        FilterEditRow& row = rows[index];\n\n        if (edit.change_capcode) row.capcode = edit.capcode;\n        if (edit.change_text) row.text = edit.text;\n')
+          patch('core/filter_multi_edit.cpp',
+                '\n        // Multi-edit must never collapse distinct capcodes into one shared value.\n        row.capcode = original_capcode;\n',
+                '\n        // Capcodes are preserved by default; only an explicit override changes them.\n')
+
+          test_path = Path('tests/core/filter_multi_edit_test.cpp')
+          test_data = test_path.read_text(encoding='utf-8')
+          anchor = '    expect(rows[7].capcode == original_capcode, "single edit preserves capcode");\n\n'
+          if test_data.count(anchor) != 1:
+              raise SystemExit('filter_multi_edit_test.cpp: anchor mismatch')
+          addition = '''    // Explicit capcode override is allowed and applies only when requested.\n    pdw::FilterMultiEdit capcode_override;\n    capcode_override.change_capcode = true;\n    capcode_override.capcode = "1234567";\n    std::vector<std::size_t> many;\n    for (std::size_t i = 0; i < 25; ++i) many.push_back(i);\n    pdw::ApplyFilterMultiEdit(rows, many, capcode_override);\n    for (std::size_t i = 0; i < rows.size(); ++i) {\n        expect(rows[i].capcode == "1234567", "explicit multi-edit capcode override applies to all selected rows");\n    }\n\n    // No-change semantics remain the default after an explicit override.\n    pdw::FilterMultiEdit no_change;\n    no_change.change_text = true;\n    no_change.text = "FOLLOWUP";\n    pdw::ApplyFilterMultiEdit(rows, many, no_change);\n    for (std::size_t i = 0; i < rows.size(); ++i) {\n        expect(rows[i].capcode == "1234567", "default multi-edit keeps capcodes unchanged");\n        expect(rows[i].text == "FOLLOWUP", "other fields can change without touching capcode");\n    }\n\n'''
+          test_path.write_text(test_data.replace(anchor, anchor + addition), encoding='utf-8')
+
+          patch('PDW.cpp',
+                '\t\tif (filter.type != TEXT_FILTER)\n\t\t{\n\t\t\tif (!multiple_edit) EnableWindow(GetDlgItem(hDlg, IDC_FILTERCAPCODE), true);\n\t\t\tEnableWindow(GetDlgItem(hDlg, IDC_FILTERTEXT), capcode);\n',
+                '\t\tif (filter.type != TEXT_FILTER)\n\t\t{\n\t\t\t// In multi-edit, mixed addresses display "Don\'t change" but remain editable.\n\t\t\t// Typing an address is therefore an explicit override for the selection.\n\t\t\tEnableWindow(GetDlgItem(hDlg, IDC_FILTERCAPCODE), true);\n\t\t\tEnableWindow(GetDlgItem(hDlg, IDC_FILTERTEXT), capcode);\n')
+
+          patch('PDW.cpp',
+                '\t\t\t\tif (!multiple_edit && strncmp(temp_cap, "Don\'t cha", 9))\t// Capcode is immutable during multi-edit\n\t\t\t\t{\n\t\t\t\t\tstrcpy(Profile.filters[index].capcode, filter.capcode);\n\t\t\t\t}\n',
+                '\t\t\t\tif (strncmp(temp_cap, "Don\'t cha", 9))\t// Explicit address override; "Don\'t change" preserves each row\n\t\t\t\t{\n\t\t\t\t\tstrcpy(Profile.filters[index].capcode, filter.capcode);\n\t\t\t\t}\n')
+          PY
+
+      - name: Remove one-shot helper and verify diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/multi-edit-capcode-wire.yml
+          git diff --check
+          git status --short
+          test -n "$(git status --short)"
+
+      - name: Commit and push exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core/filter_multi_edit.h core/filter_multi_edit.cpp tests/core/filter_multi_edit_test.cpp PDW.cpp .github/workflows/multi-edit-capcode-wire.yml
+          git diff --cached --check
+          git commit -m "Allow explicit capcode override in multi-edit"
+          git fetch origin modernization/filter-editor-usability
+          test "$(git rev-parse HEAD^)" = "$(git rev-parse origin/modernization/filter-editor-usability)"
+          git push origin HEAD:modernization/filter-editor-usability
