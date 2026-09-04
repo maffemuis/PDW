@@ -37,4 +37,9 @@ TextMatchResult FindTextFilterExpression(const TextFilterExpression& expression,
                                          std::size_t max_spans = 128);
 bool MatchTextFilterExpression(const TextFilterExpression& expression, const std::string& message);
 
+// Returns std::string::npos when every '^' is valid. In non-exact mode '^'
+// may only be the first non-whitespace character of a ';' alternative.
+// Exact-message mode keeps '^' literal, preserving legacy precedence.
+std::size_t FindInvalidTextFilterCaret(const std::string& expression, bool exact_message);
+
 } // namespace pdw
