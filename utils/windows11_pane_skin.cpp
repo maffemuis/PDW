@@ -18,10 +18,6 @@ namespace {
 const UINT_PTR kPane1SubclassId = 0x50445741;
 const UINT_PTR kPane2SubclassId = 0x50445742;
 
-HFONT g_messageFont = NULL;
-int g_messageFontWidth = 0;
-int g_messageFontHeight = 0;
-
 COLORREF EnsureLightSurfaceContrast(COLORREF color)
 {
     const int red = GetRValue(color);
@@ -58,46 +54,6 @@ COLORREF MessageColor(BYTE color)
                 return EnsureLightSurfaceContrast(Profile.color_filterlabel[color - COLOR_FILTERLABEL]);
             return RGB(35, 42, 51);
     }
-}
-
-HFONT MessageFont()
-{
-    const int width = cxChar > 0 ? static_cast<int>(cxChar) : 8;
-    int height = cyChar > 2 ? static_cast<int>(cyChar) - 2 : 15;
-    if (height < 12) height = 12;
-
-    if (g_messageFont && width == g_messageFontWidth && height == g_messageFontHeight)
-        return g_messageFont;
-
-    if (g_messageFont)
-    {
-        DeleteObject(g_messageFont);
-        g_messageFont = NULL;
-    }
-
-    g_messageFontWidth = width;
-    g_messageFontHeight = height;
-
-    // Consolas is deliberately used as a fixed-pitch Windows UI font here.
-    // Keeping the measured legacy cell width means column positions, hit
-    // testing, selection and scrolling stay byte-for-byte compatible.
-    g_messageFont = CreateFontW(
-        -height,
-        width,
-        0,
-        0,
-        FW_NORMAL,
-        FALSE,
-        FALSE,
-        FALSE,
-        DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY,
-        FIXED_PITCH | FF_MODERN,
-        L"Consolas");
-
-    return g_messageFont;
 }
 
 bool SelectionActiveForPane(PaneStruct* pane)
@@ -152,8 +108,10 @@ void DrawPaneRows(HWND hwnd, HDC hdc, PaneStruct* pane)
     if (!pane || !pane->buff_char || !pane->buff_color || cxChar == 0 || cyChar == 0)
         return;
 
-    HFONT font = MessageFont();
-    HGDIOBJ oldFont = font ? SelectObject(hdc, font) : NULL;
+    // Reuse PDW's configured message font. This keeps the existing Font
+    // setting fully functional while only replacing the surrounding visual
+    // presentation and paint path.
+    HGDIOBJ oldFont = hfont ? SelectObject(hdc, hfont) : NULL;
     SetBkMode(hdc, TRANSPARENT);
 
     const int cellWidth = static_cast<int>(cxChar);
