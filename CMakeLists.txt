@@ -2,9 +2,16 @@
 #
 # Base build script for building with cmake (http://www.cmake.org)
 
-cmake_minimum_required( VERSION 3.5 )
+cmake_minimum_required( VERSION 3.15 )
 project( PDW )
 include( CTest )
+
+# Keep release artifacts portable by linking the Microsoft C/C++ runtime
+# statically. This avoids requiring MSVCP140.dll / VCRUNTIME140.dll to be
+# preinstalled on the target Windows system.
+if( MSVC )
+  set( CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" )
+endif()
 
 # Enforce Win32 (x86)
 if( CMAKE_SIZEOF_VOID_P EQUAL 8 )
@@ -104,4 +111,13 @@ target_link_libraries( PDW
 
 if( BUILD_TESTING )
   add_subdirectory( tests )
+
+  if( MSVC )
+    add_test(
+      NAME pdw_portable_no_dynamic_msvc_runtime
+      COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+              -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/portable/check_msvc_runtime.ps1"
+              -Executable "$<TARGET_FILE:PDW>"
+    )
+  endif()
 endif()
