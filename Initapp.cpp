@@ -30,6 +30,7 @@
 #include "headers\initapp.h"
 
 #include "headers\helper_funcs.h"
+#include "utils\windows11_ui.h"
 
 PaneStruct Pane1;
 PaneStruct Pane2;
@@ -248,6 +249,11 @@ HWND NEAR InitInstance(HINSTANCE hInstance, int nCmdShow)
 						 NULL, NULL, hInstance, NULL);
 
 	if (NULL == ghWnd) return (NULL);
+
+	// Modernize the Windows-owned shell only. Decoder panes, command IDs and
+	// all existing application behaviour remain on the legacy path.
+	pdw::ApplyWindows11MainWindowStyle(ghWnd);
+	pdw::InstallWindows11DialogStyling();
 
 	ShowWindow(ghWnd, nCmdShow);
 
