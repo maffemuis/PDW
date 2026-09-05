@@ -48,6 +48,7 @@ set( PDW_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/windows11_ui.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/windows11_interaction_fix.cpp
   
   PARENT_SCOPE
 )
