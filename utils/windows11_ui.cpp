@@ -486,7 +486,7 @@ void DrawCard(HDC hdc, HWND hwnd, const RECT& card, const RECT& body,
 
     if (withRx)
     {
-        const bool active = dRX_Quality > 0.0;
+        const bool active = !bPauseFlag && dRX_Quality > 0.0;
         const COLORREF dot = active ? RGB(20, 170, 62) : RGB(154, 160, 168);
         const int dotSize = ScaleForDpi(hwnd, 10);
         const int dotRight = card.right - ScaleForDpi(hwnd, 14);
@@ -530,6 +530,7 @@ void DrawStatusBar(HDC hdc, HWND hwnd)
     const COLORREF line = RGB(216, 224, 233);
     const COLORREF fg = RGB(42, 51, 61);
     const COLORREF green = RGB(20, 170, 62);
+    const COLORREF paused = RGB(196, 120, 0);
     const COLORREF gray = RGB(154, 160, 168);
 
     HBRUSH brush = CreateSolidBrush(bg);
@@ -540,8 +541,9 @@ void DrawStatusBar(HDC hdc, HWND hwnd)
 
     const int centerY = (g_statusRect.top + g_statusRect.bottom) / 2;
     const int dot = ScaleForDpi(hwnd, 10);
-    HBRUSH dotBrush = CreateSolidBrush(green);
-    HPEN dotPen = CreatePen(PS_SOLID, 1, green);
+    const COLORREF stateColor = bPauseFlag ? paused : green;
+    HBRUSH dotBrush = CreateSolidBrush(stateColor);
+    HPEN dotPen = CreatePen(PS_SOLID, 1, stateColor);
     HGDIOBJ oldBrush = SelectObject(hdc, dotBrush);
     HGDIOBJ oldPen = SelectObject(hdc, dotPen);
     Ellipse(hdc, ScaleForDpi(hwnd, 16), centerY - dot / 2,
@@ -572,7 +574,7 @@ void DrawStatusBar(HDC hdc, HWND hwnd)
     DrawTextW(hdc, CurrentModeLabel(), -1, &modeRect,
               DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
-    const bool rxActive = dRX_Quality > 0.0;
+    const bool rxActive = !bPauseFlag && dRX_Quality > 0.0;
     const COLORREF rxColor = rxActive ? green : gray;
     HBRUSH rxBrush = CreateSolidBrush(rxColor);
     HPEN rxPen = CreatePen(PS_SOLID, 1, rxColor);
@@ -1065,6 +1067,17 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
                                         LPARAM lParam, UINT_PTR subclassId,
                                         DWORD_PTR referenceData)
 {
+    if (message == WM_GETMINMAXINFO)
+    {
+        const LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+        MINMAXINFO* info = reinterpret_cast<MINMAXINFO*>(lParam);
+        const int minWidth = ScaleForDpi(hwnd, 900);
+        const int minHeight = ScaleForDpi(hwnd, 600);
+        if (info->ptMinTrackSize.x < minWidth) info->ptMinTrackSize.x = minWidth;
+        if (info->ptMinTrackSize.y < minHeight) info->ptMinTrackSize.y = minHeight;
+        return result;
+    }
+
     if (message == WM_LBUTTONDOWN)
     {
         POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
