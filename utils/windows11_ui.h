@@ -16,7 +16,7 @@
 namespace pdw {
 
 // Applies Windows 11 non-client styling to the main PDW window while
-// preserving the existing decoder panes and command IDs.
+// preserving the existing decoder/data behavior and command IDs.
 void ApplyWindows11MainWindowStyle(HWND hwnd);
 
 // Installs a thread-local hook that modernizes legacy resource dialogs after
@@ -29,6 +29,11 @@ void ApplyWindows11DialogStyle(HWND hwnd);
 
 // Applies the modern Explorer visual style to an existing common control.
 void ApplyWindows11ControlStyle(HWND hwnd);
+
+// Replaces the visible legacy message-pane painting with the 2026 workspace
+// renderer while retaining the original pane HWNDs for scrolling, selection
+// and all existing message-buffer behavior.
+void EnsureWindows11PaneStyle();
 
 // True after the modern shell has been enabled. Legacy drawing helpers use
 // this to avoid painting obsolete chrome over the Windows 11 command surface.
