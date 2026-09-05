@@ -34,4 +34,6 @@ void SetMessageItemPositionsWidth()
 {
     if (cxChar == 0) return;
     LegacySetMessageItemPositionsWidth();
+    if (pdw::IsWindows11ChromeEnabled())
+        pdw::EnsureWindows11PaneStyle();
 }
