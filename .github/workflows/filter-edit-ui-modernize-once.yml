@@ -1,0 +1,26 @@
+name: PDW Add Edit Filter UI modernize once
+
+on:
+  push:
+    branches:
+      - modernization/windows11-ui
+    paths:
+      - .github/workflows/filter-edit-ui-modernize-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-filter-edit-ui:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: modernization/windows11-ui
+          fetch-depth: 1
+
+      - name: Apply bounded Add Edit Filter presentation patch
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: .github/scripts/filter-edit-ui-modernize-once.ps1
