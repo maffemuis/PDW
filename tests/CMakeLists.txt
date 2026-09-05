@@ -146,6 +146,20 @@ add_test(
     COMMAND pdw_rx_diagnostics_test
 )
 
+add_executable( pdw_rx_raw_log_replay_test
+    utils/rx_raw_log_replay_test.cpp
+    ${CMAKE_SOURCE_DIR}/utils/rx_raw_log_replay.cpp
+)
+
+target_include_directories( pdw_rx_raw_log_replay_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/utils
+)
+
+add_test(
+    NAME pdw_rx_raw_log_replay
+    COMMAND pdw_rx_raw_log_replay_test
+)
+
 add_executable( pdw_rs232_config_test
     utils/rs232_config_test.cpp
     ${CMAKE_SOURCE_DIR}/utils/rs232_config.cpp
