@@ -38,6 +38,7 @@ const UINT_PTR kScrollbackWindowSubclassId = 0x5044573A;
 const UINT_PTR kSystemTrayWindowSubclassId = 0x5044573B;
 const UINT_PTR kInterfaceSetupWindowSubclassId = 0x5044573C;
 const UINT_PTR kLogfileWindowSubclassId = 0x5044573D;
+const UINT_PTR kCustomAudioWindowSubclassId = 0x5044573E;
 const UINT kEnableModernShellMessage = WM_APP + 0x51;
 const WPARAM kLegacySecondTimer = 103;
 const int kSettingsPopupCommand = 50001;
@@ -3786,6 +3787,199 @@ void EnableModernLogfileDialog(HWND hwnd)
     InvalidateRect(hwnd, NULL, TRUE);
 }
 
+bool IsCustomAudioDialog(HWND hwnd)
+{
+    if (!hwnd) return false;
+    wchar_t className[32] = {};
+    if (GetClassNameW(hwnd, className, ARRAYSIZE(className)) <= 0 ||
+        lstrcmpW(className, L"#32770") != 0)
+        return false;
+
+    return GetDlgItem(hwnd, IDC_THRESHOLD512) != NULL &&
+           GetDlgItem(hwnd, IDC_THRESHOLD2400) != NULL &&
+           GetDlgItem(hwnd, IDC_RESYNC512) != NULL &&
+           GetDlgItem(hwnd, IDC_RESYNC2400) != NULL &&
+           GetDlgItem(hwnd, IDC_CENTERING512) != NULL &&
+           GetDlgItem(hwnd, IDC_CENTERING2400) != NULL;
+}
+
+void ConfigureModernCustomAudioControls(HWND hwnd)
+{
+    const int comboIds[] = {
+        IDC_THRESHOLD512, IDC_THRESHOLD1200, IDC_THRESHOLD1600, IDC_THRESHOLD2400,
+        IDC_RESYNC512, IDC_RESYNC1200, IDC_RESYNC1600, IDC_RESYNC2400,
+        IDC_CENTERING512, IDC_CENTERING1200, IDC_CENTERING1600, IDC_CENTERING2400
+    };
+    for (int i = 0; i < static_cast<int>(ARRAYSIZE(comboIds)); ++i)
+    {
+        HWND combo = GetDlgItem(hwnd, comboIds[i]);
+        if (!combo) continue;
+        SetWindowTheme(combo, L"Explorer", NULL);
+        SendMessage(combo, WM_SETFONT,
+                    reinterpret_cast<WPARAM>(GetDialogFont()), TRUE);
+    }
+
+    const int actionIds[] = { IDOK, IDCANCEL };
+    for (int i = 0; i < static_cast<int>(ARRAYSIZE(actionIds)); ++i)
+    {
+        HWND button = GetDlgItem(hwnd, actionIds[i]);
+        if (!button) continue;
+        LONG_PTR style = GetWindowLongPtr(button, GWL_STYLE);
+        style = (style & ~static_cast<LONG_PTR>(0x0F)) | BS_OWNERDRAW;
+        SetWindowLongPtr(button, GWL_STYLE, style);
+        SetWindowTheme(button, L"", L"");
+        SendMessage(button, WM_SETFONT,
+                    reinterpret_cast<WPARAM>(GetDialogFont()), TRUE);
+    }
+
+    for (HWND child = GetWindow(hwnd, GW_CHILD);
+         child;
+         child = GetWindow(child, GW_HWNDNEXT))
+    {
+        wchar_t className[32] = {};
+        if (GetClassNameW(child, className, ARRAYSIZE(className)) <= 0 ||
+            lstrcmpiW(className, L"Button") != 0)
+            continue;
+        const LONG_PTR style = GetWindowLongPtr(child, GWL_STYLE);
+        if ((style & 0x0F) == BS_GROUPBOX)
+            SetWindowSubclass(child, ModernGroupBoxSubclassProc,
+                              kModernGroupBoxSubclassId, 0);
+    }
+}
+
+int ExpandCustomAudioForHeader(HWND hwnd)
+{
+    HANDLE existing = GetPropW(hwnd, L"PDW.CustomAudio.HeaderOffset");
+    if (existing)
+    {
+        const INT_PTR stored = reinterpret_cast<INT_PTR>(existing);
+        return stored > 0 ? static_cast<int>(stored - 1) : 0;
+    }
+
+    RECT window = {};
+    GetWindowRect(hwnd, &window);
+    const int currentHeight = window.bottom - window.top;
+    const int header = ScaleForDpi(hwnd, 58);
+    HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO info = {};
+    info.cbSize = sizeof(info);
+    int applied = 0;
+
+    if (GetMonitorInfo(monitor, &info))
+    {
+        const int workHeight = info.rcWork.bottom - info.rcWork.top;
+        if (currentHeight + header <= workHeight)
+        {
+            int y = window.top - header / 2;
+            if (y < info.rcWork.top) y = info.rcWork.top;
+            if (y + currentHeight + header > info.rcWork.bottom)
+                y = info.rcWork.bottom - currentHeight - header;
+            SetWindowPos(hwnd, NULL, window.left, y,
+                         window.right - window.left, currentHeight + header,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+            ShiftFilterEditChildren(hwnd, header);
+            applied = header;
+        }
+    }
+
+    SetPropW(hwnd, L"PDW.CustomAudio.HeaderOffset",
+             reinterpret_cast<HANDLE>(static_cast<INT_PTR>(applied + 1)));
+    return applied;
+}
+
+int CustomAudioHeaderOffset(HWND hwnd)
+{
+    HANDLE value = GetPropW(hwnd, L"PDW.CustomAudio.HeaderOffset");
+    if (!value) return 0;
+    const INT_PTR stored = reinterpret_cast<INT_PTR>(value);
+    return stored > 0 ? static_cast<int>(stored - 1) : 0;
+}
+
+void PaintModernCustomAudioDialog(HWND hwnd, HDC hdc)
+{
+    RECT client = {};
+    GetClientRect(hwnd, &client);
+    FillRect(hdc, &client, GetDialogSurfaceBrush());
+    const int header = CustomAudioHeaderOffset(hwnd);
+    if (header <= 0) return;
+
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, RGB(24, 39, 58));
+    HGDIOBJ oldFont = SelectObject(hdc, GetTitleFont());
+    RECT title = { ScaleForDpi(hwnd, 14), ScaleForDpi(hwnd, 8),
+                   client.right - ScaleForDpi(hwnd, 14), ScaleForDpi(hwnd, 31) };
+    DrawTextW(hdc, L"Custom audio setup", -1, &title,
+              DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    SelectObject(hdc, oldFont);
+
+    SetTextColor(hdc, RGB(91, 103, 116));
+    oldFont = SelectObject(hdc, GetDialogFont());
+    RECT subtitle = { ScaleForDpi(hwnd, 14), ScaleForDpi(hwnd, 31),
+                      client.right - ScaleForDpi(hwnd, 14), header - ScaleForDpi(hwnd, 5) };
+    DrawTextW(hdc,
+              L"Tune threshold, re-sync and centering values for each decoder rate.",
+              -1, &subtitle,
+              DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX |
+              DT_END_ELLIPSIS);
+    SelectObject(hdc, oldFont);
+    DrawLine(hdc, ScaleForDpi(hwnd, 12), header - 1,
+             client.right - ScaleForDpi(hwnd, 12), header - 1,
+             RGB(216, 224, 233));
+}
+
+LRESULT CALLBACK CustomAudioWindowSubclassProc(HWND hwnd, UINT message,
+                                               WPARAM wParam, LPARAM lParam,
+                                               UINT_PTR subclassId,
+                                               DWORD_PTR referenceData)
+{
+    switch (message)
+    {
+        case WM_ERASEBKGND: return 1;
+        case WM_PAINT:
+        {
+            PAINTSTRUCT ps = {};
+            HDC hdc = BeginPaint(hwnd, &ps);
+            PaintModernCustomAudioDialog(hwnd, hdc);
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN:
+        {
+            HDC hdc = reinterpret_cast<HDC>(wParam);
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, RGB(40, 48, 58));
+            return reinterpret_cast<LRESULT>(GetDialogSurfaceBrush());
+        }
+        case WM_DRAWITEM:
+        {
+            const DRAWITEMSTRUCT* item = reinterpret_cast<const DRAWITEMSTRUCT*>(lParam);
+            if (item && item->CtlType == ODT_BUTTON &&
+                (item->CtlID == IDOK || item->CtlID == IDCANCEL))
+            {
+                DrawModernFilterButton(item);
+                return TRUE;
+            }
+            break;
+        }
+        case WM_NCDESTROY:
+            RemovePropW(hwnd, L"PDW.CustomAudio.HeaderOffset");
+            RemoveWindowSubclass(hwnd, CustomAudioWindowSubclassProc, subclassId);
+            break;
+    }
+    return DefSubclassProc(hwnd, message, wParam, lParam);
+}
+
+void EnableModernCustomAudioDialog(HWND hwnd)
+{
+    if (!IsCustomAudioDialog(hwnd)) return;
+    SetWindowSubclass(hwnd, CustomAudioWindowSubclassProc,
+                      kCustomAudioWindowSubclassId, 0);
+    ExpandCustomAudioForHeader(hwnd);
+    ConfigureModernCustomAudioControls(hwnd);
+    InvalidateRect(hwnd, NULL, TRUE);
+}
+
 BOOL CALLBACK StyleDialogChild(HWND child, LPARAM fontParam)
 {
     HFONT font = reinterpret_cast<HFONT>(fontParam);
@@ -3993,6 +4187,7 @@ void ApplyWindows11DialogStyle(HWND hwnd)
     if (IsSystemTrayDialog(hwnd)) EnableModernSystemTrayDialog(hwnd);
     if (IsInterfaceSetupDialog(hwnd)) EnableModernInterfaceSetupDialog(hwnd);
     if (IsLogfileDialog(hwnd)) EnableModernLogfileDialog(hwnd);
+    if (IsCustomAudioDialog(hwnd)) EnableModernCustomAudioDialog(hwnd);
     InvalidateRect(hwnd, NULL, TRUE);
 }
 
