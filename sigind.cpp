@@ -24,6 +24,7 @@
 #include "headers\gfx.h"
 #include "headers\initapp.h"
 #include "headers\sigind.h"
+#include "utils\windows11_ui.h"
 
 #define MAX_SI_POS        20	// 0-12. Max positions available to signal indicator.
 #define AUDIO_POINT_VALUE 2	// Used for working out samples per signal
@@ -96,6 +97,15 @@ void FreeSigInd(void)
 // Draw signal indicator on toolbar
 void DrawSigInd(HWND hwnd)
 {
+	// The Windows 11 shell exposes RX quality as a compact text status in the
+	// pane header. Suppress the old bitmap meter so it cannot paint over the
+	// modern command bar. The decoder-side signal calculations remain intact.
+	if (pdw::IsWindows11ChromeEnabled())
+	{
+		old_rect_flg = FALSE;
+		return;
+	}
+
 	HDC hdc;
 	RECT r;
 	int x=5,y=4;
