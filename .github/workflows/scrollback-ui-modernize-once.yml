@@ -1,0 +1,26 @@
+name: PDW Scrollback UI modernize once
+
+on:
+  push:
+    branches:
+      - tmp/scrollback-ui-apply
+    paths:
+      - .github/workflows/scrollback-ui-modernize-once.yml
+      - .github/scripts/scrollback-ui-modernize-once.ps1
+
+permissions:
+  contents: write
+
+jobs:
+  patch-scrollback-ui:
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/scrollback-ui-apply
+          fetch-depth: 0
+
+      - name: Apply bounded Scrollback presentation patch
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: .github/scripts/scrollback-ui-modernize-once.ps1
