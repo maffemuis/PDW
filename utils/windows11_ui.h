@@ -9,6 +9,10 @@ namespace pdw {
 // preserving the existing Win32 client-area rendering and decoder UI.
 void ApplyWindows11MainWindowStyle(HWND hwnd);
 
+// Installs a thread-local hook that modernizes legacy resource dialogs after
+// WM_INITDIALOG, without changing any existing dialog procedures or IDs.
+void InstallWindows11DialogStyling();
+
 // Applies modern non-client styling, system UI fonts and themed common
 // controls to a legacy dialog without changing its command/control IDs.
 void ApplyWindows11DialogStyle(HWND hwnd);
