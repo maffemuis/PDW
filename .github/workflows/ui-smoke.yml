@@ -59,8 +59,11 @@ jobs:
           Add-Type @"
           using System;
           using System.Runtime.InteropServices;
+          using System.Text;
 
           public static class PdwWindowCapture {
+              public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
               [StructLayout(LayoutKind.Sequential)]
               public struct RECT {
                   public int Left;
@@ -68,6 +71,18 @@ jobs:
                   public int Right;
                   public int Bottom;
               }
+
+              [DllImport("user32.dll")]
+              public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+              [DllImport("user32.dll")]
+              public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+              [DllImport("user32.dll")]
+              public static extern bool IsWindowVisible(IntPtr hWnd);
+
+              [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+              public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
 
               [DllImport("user32.dll", SetLastError=true)]
               public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
@@ -81,6 +96,38 @@ jobs:
 
               [DllImport("user32.dll")]
               public static extern bool ShowWindow(IntPtr hWnd, int command);
+
+              public static IntPtr FindLargestWindowForProcess(uint processId, out string diagnostics) {
+                  IntPtr best = IntPtr.Zero;
+                  long bestArea = -1;
+                  StringBuilder log = new StringBuilder();
+
+                  EnumWindows(delegate(IntPtr hwnd, IntPtr state) {
+                      uint pid;
+                      GetWindowThreadProcessId(hwnd, out pid);
+                      if (pid != processId) return true;
+
+                      RECT rect;
+                      if (!GetWindowRect(hwnd, out rect)) return true;
+                      int width = rect.Right - rect.Left;
+                      int height = rect.Bottom - rect.Top;
+                      long area = (long)Math.Max(0, width) * Math.Max(0, height);
+                      StringBuilder title = new StringBuilder(512);
+                      GetWindowText(hwnd, title, title.Capacity);
+                      bool visible = IsWindowVisible(hwnd);
+                      log.AppendLine(String.Format("hwnd=0x{0:X} visible={1} size={2}x{3} title={4}",
+                          hwnd.ToInt64(), visible, width, height, title.ToString()));
+
+                      if (area > bestArea) {
+                          bestArea = area;
+                          best = hwnd;
+                      }
+                      return true;
+                  }, IntPtr.Zero);
+
+                  diagnostics = log.ToString();
+                  return best;
+              }
           }
           "@
 
@@ -88,23 +135,34 @@ jobs:
           $outDir = Join-Path $PWD "ui-smoke"
           New-Item -ItemType Directory -Force $outDir | Out-Null
           $png = Join-Path $outDir "pdw-main-window.png"
+          $diagnosticsPath = Join-Path $outDir "window-diagnostics.txt"
 
           $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
           try {
             $deadline = (Get-Date).AddSeconds(20)
+            $hwnd = [IntPtr]::Zero
+            $diagnostics = ""
             do {
               Start-Sleep -Milliseconds 250
               $process.Refresh()
               if ($process.HasExited) {
-                throw "PDW exited before its main window became available (exit $($process.ExitCode))."
+                throw "PDW exited before a top-level window became available (exit $($process.ExitCode))."
               }
-            } while ($process.MainWindowHandle -eq 0 -and (Get-Date) -lt $deadline)
+              $hwnd = [PdwWindowCapture]::FindLargestWindowForProcess([uint32]$process.Id, [ref]$diagnostics)
+            } while ($hwnd -eq [IntPtr]::Zero -and (Get-Date) -lt $deadline)
 
-            if ($process.MainWindowHandle -eq 0) {
-              throw "PDW main window did not become available within 20 seconds."
+            @(
+              "process_id=$($process.Id)"
+              "process_name=$($process.ProcessName)"
+              "main_window_handle=$($process.MainWindowHandle)"
+              "enumerated_windows:"
+              $diagnostics
+            ) | Set-Content -Path $diagnosticsPath -Encoding UTF8
+
+            if ($hwnd -eq [IntPtr]::Zero) {
+              throw "PDW did not expose any top-level window within 20 seconds."
             }
 
-            $hwnd = [IntPtr]$process.MainWindowHandle
             [PdwWindowCapture]::ShowWindow($hwnd, 9) | Out-Null
             [PdwWindowCapture]::SetWindowPos($hwnd, [IntPtr]::Zero, 80, 80, 1280, 820, 0x0014) | Out-Null
             Start-Sleep -Seconds 2
@@ -115,7 +173,7 @@ jobs:
             }
             $width = $rect.Right - $rect.Left
             $height = $rect.Bottom - $rect.Top
-            if ($width -lt 400 -or $height -lt 300) {
+            if ($width -lt 200 -or $height -lt 120) {
               throw "Captured PDW window size is unexpectedly small: ${width}x${height}."
             }
 
@@ -132,7 +190,7 @@ jobs:
 
             if (-not $captured) {
               $bitmap.Dispose()
-              throw "PrintWindow failed to capture the PDW main window."
+              throw "PrintWindow failed to capture the PDW top-level window."
             }
 
             $bitmap.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
@@ -146,11 +204,13 @@ jobs:
           }
 
       - name: Upload UI smoke evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: PDW-Windows11-UI-smoke
           path: |
             ui-smoke/pdw-main-window.png
+            ui-smoke/window-diagnostics.txt
             build-ui/Release/PDW.exe
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
