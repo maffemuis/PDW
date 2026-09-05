@@ -33,6 +33,22 @@ bool ReplayExitRequested()
     return value && strcmp(value, "1") == 0;
 }
 
+bool GetSoakSeconds(DWORD *seconds)
+{
+    if (seconds) *seconds = 0;
+
+    const char *value = getenv("PDW_PRESERVATION_SOAK_SECONDS");
+    if (!value || !value[0]) return true;
+
+    char *end = NULL;
+    const unsigned long parsed = strtoul(value, &end, 10);
+    if (end == value || !end || *end != '\0' || parsed == 0 || parsed > 86400UL)
+        return false;
+
+    if (seconds) *seconds = (DWORD)parsed;
+    return true;
+}
+
 void WriteFlexDiagnosticSnapshot()
 {
     const char *path = getenv("PDW_PRESERVATION_FLEX_DIAGNOSTIC");
@@ -131,6 +147,25 @@ bool FeedDecoder(
             return false;
     }
 }
+
+int ReplayRecording(const char *recording_path,
+                    ReplaySinkContext *sink,
+                    PreservationWavInfo *info,
+                    char *wav_error,
+                    size_t wav_error_size)
+{
+    memset(wav_error, 0, wav_error_size);
+    Reset_ATB();
+
+    return PreservationReplayPcm8Wav(
+        recording_path,
+        8192,
+        FeedDecoder,
+        sink,
+        info,
+        wav_error,
+        wav_error_size);
+}
 }
 
 BOOL Start_Capturing(void)
@@ -143,6 +178,18 @@ BOOL Start_Capturing(void)
     }
 
     bCapturing = false;
+
+    DWORD soak_seconds = 0;
+    if (!GetSoakSeconds(&soak_seconds))
+    {
+        ReportReplayError("PDW_PRESERVATION_SOAK_SECONDS must be an integer from 1 through 86400.");
+        return FALSE;
+    }
+    if (soak_seconds && !ReplayExitRequested())
+    {
+        ReportReplayError("Preservation soak mode requires PDW_PRESERVATION_REPLAY_EXIT=1.");
+        return FALSE;
+    }
 
     char wav_error[256] = {0};
     PreservationWavInfo info = {0};
@@ -181,17 +228,51 @@ BOOL Start_Capturing(void)
         return FALSE;
     }
 
-    Reset_ATB();
-
     ReplaySinkContext sink;
     sink.route = route;
 
-    memset(wav_error, 0, sizeof(wav_error));
+    if (soak_seconds)
+    {
+        const ULONGLONG required_ms = (ULONGLONG)soak_seconds * 1000ULL;
+        const ULONGLONG started = GetTickCount64();
+        DWORD cycles = 0;
 
-    const int replay_result = PreservationReplayPcm8Wav(
+        do
+        {
+            const int replay_result = ReplayRecording(
+                recording_path,
+                &sink,
+                &info,
+                wav_error,
+                sizeof(wav_error));
+
+            if (replay_result != PRESERVATION_WAV_OK)
+            {
+                ReportReplayError(wav_error);
+                return FALSE;
+            }
+
+            ++cycles;
+        }
+        while ((GetTickCount64() - started) < required_ms);
+
+        char message[192];
+        snprintf(
+            message,
+            sizeof(message),
+            "PDW preservation same-process soak complete: seconds=%lu cycles=%lu elapsed_ms=%llu\n",
+            (unsigned long)soak_seconds,
+            (unsigned long)cycles,
+            (unsigned long long)(GetTickCount64() - started));
+        message[sizeof(message) - 1] = '\0';
+        OutputDebugStringA(message);
+
+        WriteFlexDiagnosticSnapshot();
+        ExitProcess(0);
+    }
+
+    const int replay_result = ReplayRecording(
         recording_path,
-        8192,
-        FeedDecoder,
         &sink,
         &info,
         wav_error,
