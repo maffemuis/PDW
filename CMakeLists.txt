@@ -52,6 +52,7 @@ set( PDW_SRCS
         ${PDW_SRCS}
         Flex.cpp
         Gfx.cpp
+        gfx_startup_guard.cpp
         Initapp.cpp
         Misc.cpp
         Rsrc.rc
@@ -75,6 +76,13 @@ set( PDW_SRCS
 # opt-in preservation observation wrapper.
 set_source_files_properties( Misc.cpp PROPERTIES
         COMPILE_DEFINITIONS PDW_SHOWMESSAGE_IMPLEMENTATION
+)
+
+# Keep the legacy GDI title-bar implementation intact under internal names.
+# A small startup guard prevents Windows 11 re-entrant paints from entering
+# the layout code before cxChar/cyChar have been initialized.
+set_source_files_properties( Gfx.cpp PROPERTIES
+        COMPILE_DEFINITIONS "DrawTitleBarGfx=LegacyDrawTitleBarGfx;SetMessageItemPositionsWidth=LegacySetMessageItemPositionsWidth"
 )
 
 # Keep the legacy WinMM Start_Capturing implementation intact and expose it
