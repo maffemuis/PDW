@@ -4213,31 +4213,50 @@ bool IsColorsDialog(HWND hwnd)
            GetDlgItem(hwnd, IDC_COLORDEFAULT) != NULL;
 }
 
+bool UseDutchUiLanguage()
+{
+    LANGID language = GetUserDefaultUILanguage();
+    if (PRIMARYLANGID(language) == LANG_DUTCH) return true;
+    language = GetSystemDefaultUILanguage();
+    return PRIMARYLANGID(language) == LANG_DUTCH;
+}
+
+const wchar_t* ColorsTitle()
+{
+    return UseDutchUiLanguage() ? L"Kleuren" : L"Colors";
+}
+
+const wchar_t* ColorsSubtitle()
+{
+    return UseDutchUiLanguage()
+        ? L"Pas de weergavekleuren van gedecodeerde berichten aan."
+        : L"Customize the display colors used for decoded messages.";
+}
+
 void SetColorsDialogText(HWND hwnd)
 {
-    SetWindowTextW(hwnd, L"Kleuren");
-    struct ItemText { int id; const wchar_t* text; };
+    const bool dutch = UseDutchUiLanguage();
+    SetWindowTextW(hwnd, ColorsTitle());
+    struct ItemText { int id; const wchar_t* nl; const wchar_t* en; };
     const ItemText items[] = {
-        { IDC_COLORBACKGND, L"Achtergrond" },
-        { IDC_COLORCAPCODE, L"Capcode" },
-        { IDC_COLORFLEXPHASE, L"FLEX-fase" },
-        { IDC_COLORTIMESTAMP, L"Tijdstempel" },
-        { IDC_COLORBITERRORS, L"Bitfouten" },
-        { IDC_COLORNUMERIC, L"Numeriek" },
-        { IDC_COLORALPHANUM, L"Alfanumeriek" },
-        { IDC_COLORFLEXBIN, L"FLEX binair" },
-        { IDC_COLORFILTMATCH, L"Filtertreffer" },
-        { IDC_COLORFILTERLABEL, L"Filterlabel" },
-        { IDC_COLORDEFAULT, L"Standaardkleuren" },
-        { IDC_COLORWIN, L"Windows-kleuren" },
-        { IDC_COLORINSTRUCTIONS, L"Klik op een kleurvak om de kleur aan te passen." },
-        { IDOK, L"OK" },
-        { IDCANCEL, L"Annuleren" }
+        { IDC_COLORBACKGND, L"Achtergrond", L"Background" },
+        { IDC_COLORCAPCODE, L"Capcode", L"Address" },
+        { IDC_COLORFLEXPHASE, L"FLEX-fase", L"Phase/Function" },
+        { IDC_COLORTIMESTAMP, L"Tijd/datum", L"Time/Date" },
+        { IDC_COLORBITERRORS, L"Bitfouten", L"Bit Errors" },
+        { IDC_COLORNUMERIC, L"Numeriek/toon", L"Numeric/Tone" },
+        { IDC_COLORALPHANUM, L"Bericht", L"Message" },
+        { IDC_COLORFLEXBIN, L"FLEX binair", L"FLEX Binary" },
+        { IDC_COLORFILTMATCH, L"Filtertreffer", L"Filter Match" },
+        { IDC_COLORFILTERLABEL, L"Filterlabel", L"Filter Label" },
+        { IDC_COLORDEFAULT, L"Standaardkleuren", L"Default Colors" },
+        { IDOK, L"OK", L"OK" },
+        { IDCANCEL, L"Annuleren", L"Cancel" }
     };
     for (int i = 0; i < static_cast<int>(ARRAYSIZE(items)); ++i)
     {
         HWND child = GetDlgItem(hwnd, items[i].id);
-        if (child) SetWindowTextW(child, items[i].text);
+        if (child) SetWindowTextW(child, dutch ? items[i].nl : items[i].en);
     }
 }
 
@@ -4317,7 +4336,7 @@ void PaintModernColorsDialog(HWND hwnd, HDC hdc)
     HGDIOBJ oldFont = SelectObject(hdc, GetTitleFont());
     RECT title = { ScaleForDpi(hwnd, 14), ScaleForDpi(hwnd, 8),
                    client.right - ScaleForDpi(hwnd, 14), ScaleForDpi(hwnd, 31) };
-    DrawTextW(hdc, L"Kleuren", -1, &title,
+    DrawTextW(hdc, ColorsTitle(), -1, &title,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
     SelectObject(hdc, oldFont);
 
@@ -4325,7 +4344,7 @@ void PaintModernColorsDialog(HWND hwnd, HDC hdc)
     oldFont = SelectObject(hdc, GetDialogFont());
     RECT subtitle = { ScaleForDpi(hwnd, 14), ScaleForDpi(hwnd, 31),
                       client.right - ScaleForDpi(hwnd, 14), header - ScaleForDpi(hwnd, 5) };
-    DrawTextW(hdc, L"Pas de weergavekleuren van gedecodeerde berichten aan.", -1,
+    DrawTextW(hdc, ColorsSubtitle(), -1,
               &subtitle, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX |
               DT_END_ELLIPSIS);
     SelectObject(hdc, oldFont);
