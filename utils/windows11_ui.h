@@ -3,6 +3,16 @@
 
 #include <windows.h>
 
+// windowsx.h provides these helpers, but it also defines a SelectFont macro
+// that collides with PDW's legacy SelectFont function. Keep the dependency
+// surface small and provide only the signed coordinate helpers we need.
+#ifndef GET_X_LPARAM
+#define GET_X_LPARAM(lp) ((int)(short)LOWORD(lp))
+#endif
+#ifndef GET_Y_LPARAM
+#define GET_Y_LPARAM(lp) ((int)(short)HIWORD(lp))
+#endif
+
 namespace pdw {
 
 // Applies Windows 11 non-client styling to the main PDW window while
