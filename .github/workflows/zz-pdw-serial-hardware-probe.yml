@@ -1,0 +1,88 @@
+name: PDW serial hardware probe
+
+on:
+  push:
+    branches:
+      - "modernization/filter-editor-usability"
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    steps:
+      - name: Verify dedicated PDW runner
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ($env:RUNNER_NAME -ne "pc-soldeerbank-pdw-01") {
+            throw "Refusing serial hardware probe on unexpected runner '$env:RUNNER_NAME'. Expected pc-soldeerbank-pdw-01."
+          }
+          Write-Host "Dedicated PDW runner verified: $env:RUNNER_NAME"
+
+      - name: Inventory Windows serial interfaces
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $out = Join-Path $env:RUNNER_TEMP "pdw-serial-hardware-probe.txt"
+          $lines = [System.Collections.Generic.List[string]]::new()
+          $lines.Add("PDW SERIAL HARDWARE PROBE")
+          $lines.Add("runner=$env:RUNNER_NAME")
+          $lines.Add("computer=$env:COMPUTERNAME")
+          $lines.Add("timestamp_utc=$([DateTime]::UtcNow.ToString('o'))")
+          $lines.Add("")
+
+          $lines.Add("[Win32_SerialPort]")
+          $ports = @(Get-CimInstance Win32_SerialPort -ErrorAction SilentlyContinue | Sort-Object DeviceID)
+          if ($ports.Count -eq 0) {
+            $lines.Add("<none>")
+          } else {
+            foreach ($p in $ports) {
+              $lines.Add(("DeviceID={0}; Name={1}; Description={2}; PNPDeviceID={3}; Status={4}" -f $p.DeviceID,$p.Name,$p.Description,$p.PNPDeviceID,$p.Status))
+            }
+          }
+          $lines.Add("")
+
+          $lines.Add("[Registry SERIALCOMM]")
+          $serialMap = Get-ItemProperty 'HKLM:\HARDWARE\DEVICEMAP\SERIALCOMM' -ErrorAction SilentlyContinue
+          if ($null -eq $serialMap) {
+            $lines.Add("<none>")
+          } else {
+            $props = $serialMap.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' } | Sort-Object Name
+            if (@($props).Count -eq 0) {
+              $lines.Add("<none>")
+            } else {
+              foreach ($prop in $props) {
+                $lines.Add(("{0}={1}" -f $prop.Name,$prop.Value))
+              }
+            }
+          }
+          $lines.Add("")
+
+          $lines.Add("[PnP Ports]")
+          $pnp = @(Get-PnpDevice -Class Ports -ErrorAction SilentlyContinue | Sort-Object FriendlyName)
+          if ($pnp.Count -eq 0) {
+            $lines.Add("<none>")
+          } else {
+            foreach ($d in $pnp) {
+              $lines.Add(("Status={0}; FriendlyName={1}; InstanceId={2}" -f $d.Status,$d.FriendlyName,$d.InstanceId))
+            }
+          }
+
+          $lines | Set-Content -Path $out -Encoding utf8
+          Get-Content $out
+
+          $visibleCom = @($ports | Where-Object { $_.DeviceID -match '^COM\d+$' })
+          if ($visibleCom.Count -eq 0) {
+            Write-Host "PDW_PROBE_CLASSIFICATION=NO_COM_PORTS_VISIBLE"
+          } else {
+            Write-Host "PDW_PROBE_CLASSIFICATION=COM_PORTS_VISIBLE"
+            Write-Host ("PDW_PROBE_COM_PORTS=" + (($visibleCom.DeviceID | Sort-Object) -join ','))
+          }
+
+      - name: Upload serial hardware probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDW-serial-hardware-probe-${{ github.sha }}
+          path: ${{ runner.temp }}/pdw-serial-hardware-probe.txt
+          if-no-files-found: error
+          retention-days: 30
