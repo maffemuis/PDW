@@ -13,9 +13,6 @@
 
 namespace {
 
-// Numeric values are used intentionally so the build remains source-compatible
-// with older Windows SDK headers. Unsupported attributes simply fail harmlessly
-// on pre-Windows-11 systems.
 const DWORD kDwmUseImmersiveDarkMode = 20;
 const DWORD kDwmWindowCornerPreference = 33;
 const DWORD kDwmSystemBackdropType = 38;
@@ -26,8 +23,6 @@ const UINT_PTR kMainWindowSubclassId = 0x50445711;
 HFONT g_dialogFont = NULL;
 HFONT g_headerFont = NULL;
 HHOOK g_dialogHook = NULL;
-
-extern double dRX_Quality;
 
 bool AppsPreferDarkMode()
 {
@@ -45,7 +40,6 @@ bool AppsPreferDarkMode()
     const LONG result = RegQueryValueExW(key, L"AppsUseLightTheme", NULL, NULL,
                                          reinterpret_cast<LPBYTE>(&value), &size);
     RegCloseKey(key);
-
     return result == ERROR_SUCCESS && value == 0;
 }
 
@@ -59,8 +53,6 @@ HFONT GetDialogFont()
 
     if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0))
     {
-        // Windows supplies the correct Segoe UI family and current DPI-aware
-        // system metrics, so legacy dialogs no longer force an XP-era font.
         g_dialogFont = CreateFontIndirectW(&metrics.lfMessageFont);
     }
 
@@ -71,7 +63,6 @@ HFONT GetDialogFont()
                                   CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                   DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
     }
-
     return g_dialogFont;
 }
 
@@ -91,9 +82,6 @@ BOOL CALLBACK StyleDialogChild(HWND child, LPARAM fontParam)
 {
     HFONT font = reinterpret_cast<HFONT>(fontParam);
     if (font) SendMessage(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-
-    // Explorer theme maps buttons, edits, combo boxes, list views and scroll
-    // bars to the current Windows common-control visual style.
     SetWindowTheme(child, L"Explorer", NULL);
     return TRUE;
 }
@@ -111,9 +99,6 @@ void StyleMainToolbar(HWND mainWindow)
     HWND toolbar = FindWindowExW(mainWindow, NULL, TOOLBARCLASSNAMEW, NULL);
     if (!toolbar) return;
 
-    // Keep every existing command ID, but replace the 16x16 bitmap strip with
-    // a compact Windows-11-style text command bar. All commands remain available
-    // from the normal menu as well.
     static const char* labels[] = {
         "Log", "Copy", "Monitor", "Filtered", "Save", "Print",
         "Options", "Filters", "Stats", "Pause", "Help", "Clear", "Mode"
@@ -147,7 +132,8 @@ void StyleMainToolbar(HWND mainWindow)
         info.pszText = const_cast<LPSTR>(labels[textIndex++]);
         info.iImage = I_IMAGENONE;
         info.fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT;
-        SendMessageA(toolbar, TB_SETBUTTONINFOA, button.idCommand, reinterpret_cast<LPARAM>(&info));
+        SendMessageA(toolbar, TB_SETBUTTONINFOA, button.idCommand,
+                     reinterpret_cast<LPARAM>(&info));
     }
 
     SendMessage(toolbar, TB_AUTOSIZE, 0, 0);
@@ -269,15 +255,16 @@ void DrawPaneHeader(HWND mainWindow, HWND pane, bool filteredPane, bool withRx)
     {
         char rxText[24];
         COLORREF rxColor;
-        if (dRX_Quality <= 0.0)
+        const double quality = Profile.dRX_Quality;
+        if (quality <= 0.0)
         {
             strcpy_s(rxText, sizeof(rxText), "RX idle");
             rxColor = dark ? RGB(180, 180, 180) : RGB(96, 96, 96);
         }
         else
         {
-            sprintf_s(rxText, sizeof(rxText), "RX %.0f%%", dRX_Quality);
-            rxColor = dRX_Quality >= 96.0 ? RGB(16, 124, 16) : RGB(196, 43, 28);
+            sprintf_s(rxText, sizeof(rxText), "RX %.0f%%", quality);
+            rxColor = quality >= 96.0 ? RGB(16, 124, 16) : RGB(196, 43, 28);
         }
 
         const int rxLeft = client.right - rxWidth;
@@ -332,8 +319,6 @@ LRESULT CALLBACK DialogCallWndRetProc(int code, WPARAM wParam, LPARAM lParam)
         const CWPRETSTRUCT* info = reinterpret_cast<const CWPRETSTRUCT*>(lParam);
         if (info->message == WM_INITDIALOG)
         {
-            // WH_CALLWNDPROCRET runs after the existing dialog procedure has
-            // initialized all controls, so this does not change legacy logic.
             pdw::ApplyWindows11DialogStyle(info->hwnd);
         }
     }
@@ -354,14 +339,9 @@ void ApplyWindows11MainWindowStyle(HWND hwnd)
     const BOOL dark = AppsPreferDarkMode() ? TRUE : FALSE;
     DwmSetWindowAttribute(hwnd, kDwmUseImmersiveDarkMode, &dark, sizeof(dark));
 
-    // Mica/backdrop is intentionally best-effort. The legacy decoder and pane
-    // rendering stay intact; only the surrounding shell/chrome is modernized.
     int backdrop = kDwmBackdropMainWindow;
     DwmSetWindowAttribute(hwnd, kDwmSystemBackdropType, &backdrop, sizeof(backdrop));
 
-    // CreateWindow has completed at this point, so PDW's legacy font metrics
-    // are initialized. Styling the toolbar here therefore cannot trigger the
-    // early-paint divide-by-zero that the first preview exposed.
     StyleMainToolbar(hwnd);
     SetWindowSubclass(hwnd, MainWindowSubclassProc, kMainWindowSubclassId, 0);
 }
@@ -369,9 +349,6 @@ void ApplyWindows11MainWindowStyle(HWND hwnd)
 void InstallWindows11DialogStyling()
 {
     if (g_dialogHook) return;
-
-    // Thread-local only: PDW's own dialogs are modernized, never unrelated
-    // processes/windows. Failure is non-fatal and leaves the legacy UI intact.
     g_dialogHook = SetWindowsHookExW(WH_CALLWNDPROCRET, DialogCallWndRetProc,
                                     NULL, GetCurrentThreadId());
 }
@@ -386,7 +363,6 @@ void ApplyWindows11DialogStyle(HWND hwnd)
     HFONT font = GetDialogFont();
     if (font) SendMessage(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     EnumChildWindows(hwnd, StyleDialogChild, reinterpret_cast<LPARAM>(font));
-
     InvalidateRect(hwnd, NULL, TRUE);
 }
 
