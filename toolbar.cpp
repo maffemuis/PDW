@@ -15,7 +15,6 @@
 
 #include "headers\resource.h"
 #include "headers\toolbar.h"
-#include "utils\windows11_ui.h"
 
 
 #define NUM_TB_BUTTONS 18   // 14 buttons and 5 seperators
@@ -45,6 +44,10 @@ HWND ShowMakeToolBar(HWND parent_hwnd,HINSTANCE hThisInstance)
 
 		// Keep the proven toolbar commands and bitmaps, but let Windows render a
 		// flat modern command surface instead of the old framed 3D toolbar.
+		// Do not theme/reconfigure the control synchronously here: this function
+		// runs inside the parent WM_CREATE path, before PDW has initialized its
+		// text metrics. SetWindowTheme/TB_* messages can re-enter WM_PAINT and
+		// make legacy title-bar layout divide by an as-yet-zero cxChar.
 		tbhwnd = CreateToolbarEx(parent_hwnd,
 							     WS_CHILD | WS_VISIBLE | TBSTYLE_TOOLTIPS | TBSTYLE_FLAT | CCS_NODIVIDER,
 								 IDW_TOOL_BAR,
@@ -65,10 +68,6 @@ HWND ShowMakeToolBar(HWND parent_hwnd,HINSTANCE hThisInstance)
 			return(NULL);
 		}
 
-		pdw::ApplyWindows11ControlStyle(tbhwnd);
-		SendMessage(tbhwnd, TB_SETEXTENDEDSTYLE, 0, TBSTYLE_EX_DOUBLEBUFFER);
-		SendMessage(tbhwnd, TB_SETPADDING, 0, MAKELPARAM(4, 4));
-
 		Add_TB_ButtonsBitmaps(tbhwnd,hThisInstance); // Add rest of bitmaps/buttons.
 	}
 
@@ -87,8 +86,6 @@ HWND ShowMakeToolBar(HWND parent_hwnd,HINSTANCE hThisInstance)
 
 
 // Load toolbar bitmap images
-// Start from TOOL_BAR_BTN0
-//
 BOOL GetToolBarImages(HINSTANCE hThisInstance)
 {
 	WORD btn_index = (WORD)IDT_TOOLBAR_BTN0;
@@ -176,12 +173,12 @@ void TB_AutoSize(HWND hTbar)
 // Sets the toolbar Tool Tip text if it's a TTN_NEEDTEXT message.
 void SetToolTXT(HINSTANCE hThisInstance, LPARAM lParam)
 {
-	LPTOOLTIPTEXT new_txt;		// Used for setting tool-tip text for toolbar.
+	LPTOOLTIPTEXT new_txt;
 
 	new_txt = (LPTOOLTIPTEXT)lParam;
 	new_txt->hinst = hThisInstance;
 
-	switch(new_txt->hdr.idFrom)	// Set text, based on which control the cursor is currently on
+	switch(new_txt->hdr.idFrom)
 	{
 		case IDT_TOOLBAR_BTN0:
 		new_txt->lpszText = "Logfile";
@@ -234,9 +231,5 @@ void SetToolTXT(HINSTANCE hThisInstance, LPARAM lParam)
 		case IDT_TOOLBAR_BTN12:
 		new_txt->lpszText = "Change Mode";
 		break;
-
-//		default:
-//		new_txt->lpszText = "*";
-//		break;
 	}
 }
