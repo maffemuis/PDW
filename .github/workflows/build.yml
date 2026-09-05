@@ -19,6 +19,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Prepare self-hosted VS2022 toolchain
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $cmake = Get-Command cmake.exe -ErrorAction SilentlyContinue
+          if (-not $cmake) {
+            $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+            if (-not (Test-Path $vswhere)) {
+              throw "CMake is not on PATH and vswhere.exe was not found. Install Visual Studio 2022 C++ build tools with the CMake component on the PDW runner."
+            }
+
+            $vsInstall = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1)
+            if (-not $vsInstall) {
+              throw "Visual Studio 2022 C++ build tools were not found on the PDW runner."
+            }
+
+            $cmakeDir = Join-Path $vsInstall "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+            $cmakeExe = Join-Path $cmakeDir "cmake.exe"
+            if (-not (Test-Path $cmakeExe)) {
+              throw "Visual Studio was found at '$vsInstall', but its CMake component is missing at '$cmakeExe'."
+            }
+
+            $cmakeDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            Write-Host "Using Visual Studio bundled CMake: $cmakeExe"
+          }
+          else {
+            Write-Host "Using CMake from PATH: $($cmake.Source)"
+          }
+
+          $python = Get-Command python.exe -ErrorAction SilentlyContinue
+          if (-not $python) {
+            throw "python.exe is not on PATH on the PDW runner. Python 3 is required for preservation fixture generation."
+          }
+          Write-Host "Using Python: $($python.Source)"
+
       - name: Configure CMake (Win32 / Release)
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
         run: |
