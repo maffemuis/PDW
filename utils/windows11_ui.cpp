@@ -4,6 +4,7 @@
 #include <dwmapi.h>
 #include <uxtheme.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "..\\Headers\\pdw.h"
 #include "..\\Headers\\gfx.h"
@@ -11,18 +12,28 @@
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
+extern double dRX_Quality;
+
 namespace {
 
+// Numeric values are used intentionally so the build remains source-compatible
+// with older Windows SDK headers. Unsupported attributes simply fail harmlessly
+// on pre-Windows-11 systems.
 const DWORD kDwmUseImmersiveDarkMode = 20;
 const DWORD kDwmWindowCornerPreference = 33;
 const DWORD kDwmSystemBackdropType = 38;
 const int kDwmCornerRound = 2;
 const int kDwmBackdropMainWindow = 2;
 const UINT_PTR kMainWindowSubclassId = 0x50445711;
+const UINT kEnableModernShellMessage = WM_APP + 0x51;
+const int kModernMenuCommandId = 50000;
+const WPARAM kLegacySecondTimer = 103;
 
 HFONT g_dialogFont = NULL;
 HFONT g_headerFont = NULL;
 HHOOK g_dialogHook = NULL;
+bool g_chromeEnabled = false;
+bool g_legacyMenuDetached = false;
 
 bool AppsPreferDarkMode()
 {
@@ -40,6 +51,7 @@ bool AppsPreferDarkMode()
     const LONG result = RegQueryValueExW(key, L"AppsUseLightTheme", NULL, NULL,
                                          reinterpret_cast<LPBYTE>(&value), &size);
     RegCloseKey(key);
+
     return result == ERROR_SUCCESS && value == 0;
 }
 
@@ -63,6 +75,7 @@ HFONT GetDialogFont()
                                   CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                   DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
     }
+
     return g_dialogFont;
 }
 
@@ -82,6 +95,7 @@ BOOL CALLBACK StyleDialogChild(HWND child, LPARAM fontParam)
 {
     HFONT font = reinterpret_cast<HFONT>(fontParam);
     if (font) SendMessage(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+
     SetWindowTheme(child, L"Explorer", NULL);
     return TRUE;
 }
@@ -99,6 +113,8 @@ void StyleMainToolbar(HWND mainWindow)
     HWND toolbar = FindWindowExW(mainWindow, NULL, TOOLBARCLASSNAMEW, NULL);
     if (!toolbar) return;
 
+    // Preserve all existing command IDs while replacing the 16x16 bitmap strip
+    // with a compact Windows 11 text command surface.
     static const char* labels[] = {
         "Log", "Copy", "Monitor", "Filtered", "Save", "Print",
         "Options", "Filters", "Stats", "Pause", "Help", "Clear", "Mode"
@@ -111,7 +127,7 @@ void StyleMainToolbar(HWND mainWindow)
 
     SetWindowTheme(toolbar, L"Explorer", NULL);
     SendMessage(toolbar, TB_SETEXTENDEDSTYLE, 0, TBSTYLE_EX_DOUBLEBUFFER);
-    SendMessage(toolbar, TB_SETPADDING, 0, MAKELPARAM(7, 3));
+    SendMessage(toolbar, TB_SETPADDING, 0, MAKELPARAM(9, 5));
 
     HFONT font = GetDialogFont();
     if (font) SendMessage(toolbar, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
@@ -136,8 +152,124 @@ void StyleMainToolbar(HWND mainWindow)
                      reinterpret_cast<LPARAM>(&info));
     }
 
+    // The old menu bar is exposed through one compact Menu entry. This keeps
+    // every legacy function reachable without carrying the classic menu strip.
+    if (SendMessage(toolbar, TB_COMMANDTOINDEX, kModernMenuCommandId, 0) == -1)
+    {
+        const LRESULT stringIndex = SendMessageA(toolbar, TB_ADDSTRINGA, 0,
+                                                  reinterpret_cast<LPARAM>("Menu"));
+        TBBUTTON menuButton;
+        ZeroMemory(&menuButton, sizeof(menuButton));
+        menuButton.iBitmap = I_IMAGENONE;
+        menuButton.idCommand = kModernMenuCommandId;
+        menuButton.fsState = TBSTATE_ENABLED;
+        menuButton.fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT;
+        menuButton.iString = stringIndex;
+        SendMessageA(toolbar, TB_INSERTBUTTONA, 0, reinterpret_cast<LPARAM>(&menuButton));
+    }
+
     SendMessage(toolbar, TB_AUTOSIZE, 0, 0);
     InvalidateRect(toolbar, NULL, TRUE);
+}
+
+UINT MenuStateToFlags(UINT state)
+{
+    UINT flags = MF_STRING;
+    if (state & MFS_CHECKED) flags |= MF_CHECKED;
+    if (state & (MFS_DISABLED | MFS_GRAYED)) flags |= MF_GRAYED;
+    return flags;
+}
+
+HMENU CloneMenuTree(HMENU source)
+{
+    if (!source) return NULL;
+
+    HMENU copy = CreatePopupMenu();
+    if (!copy) return NULL;
+
+    const int count = GetMenuItemCount(source);
+    for (int i = 0; i < count; ++i)
+    {
+        char text[256];
+        ZeroMemory(text, sizeof(text));
+
+        MENUITEMINFOA item;
+        ZeroMemory(&item, sizeof(item));
+        item.cbSize = sizeof(item);
+        item.fMask = MIIM_FTYPE | MIIM_STATE | MIIM_ID | MIIM_SUBMENU | MIIM_STRING;
+        item.dwTypeData = text;
+        item.cch = sizeof(text) - 1;
+
+        if (!GetMenuItemInfoA(source, i, TRUE, &item)) continue;
+
+        if (item.fType & MFT_SEPARATOR)
+        {
+            AppendMenuA(copy, MF_SEPARATOR, 0, NULL);
+            continue;
+        }
+
+        if (item.hSubMenu)
+        {
+            HMENU child = CloneMenuTree(item.hSubMenu);
+            if (child)
+            {
+                AppendMenuA(copy, MenuStateToFlags(item.fState) | MF_POPUP,
+                            reinterpret_cast<UINT_PTR>(child), text);
+            }
+        }
+        else
+        {
+            AppendMenuA(copy, MenuStateToFlags(item.fState), item.wID, text);
+        }
+    }
+
+    return copy;
+}
+
+void ShowModernMenu(HWND mainWindow)
+{
+    if (!ghMenu) ghMenu = GetMenu(mainWindow);
+    if (!ghMenu) return;
+
+    HWND toolbar = FindWindowExW(mainWindow, NULL, TOOLBARCLASSNAMEW, NULL);
+    if (!toolbar) return;
+
+    HMENU popup = CloneMenuTree(ghMenu);
+    if (!popup) return;
+
+    RECT buttonRect;
+    ZeroMemory(&buttonRect, sizeof(buttonRect));
+    const LRESULT index = SendMessage(toolbar, TB_COMMANDTOINDEX, kModernMenuCommandId, 0);
+    if (index >= 0)
+    {
+        SendMessage(toolbar, TB_GETITEMRECT, index, reinterpret_cast<LPARAM>(&buttonRect));
+    }
+    MapWindowPoints(toolbar, NULL, reinterpret_cast<POINT*>(&buttonRect), 2);
+
+    const UINT command = TrackPopupMenu(popup,
+                                        TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN | TPM_TOPALIGN,
+                                        buttonRect.left, buttonRect.bottom + 2, 0,
+                                        mainWindow, NULL);
+    if (command)
+    {
+        SendMessage(mainWindow, WM_COMMAND, MAKEWPARAM(command, 0), 0);
+    }
+
+    DestroyMenu(popup);
+}
+
+void DetachLegacyMenu(HWND mainWindow)
+{
+    if (g_legacyMenuDetached) return;
+    if (!ghMenu) ghMenu = GetMenu(mainWindow);
+    if (!ghMenu) return;
+
+    if (GetMenu(mainWindow) == ghMenu)
+    {
+        SetMenu(mainWindow, NULL);
+        DrawMenuBar(mainWindow);
+    }
+    g_legacyMenuDetached = true;
 }
 
 const char* HeaderLabelForItem(int item)
@@ -224,7 +356,7 @@ void DrawPaneHeader(HWND mainWindow, HWND pane, bool filteredPane, bool withRx)
 
     SetMessageItemPositionsWidth();
     const bool dark = AppsPreferDarkMode();
-    const int rxWidth = withRx ? 58 : 0;
+    const int rxWidth = withRx ? 92 : 0;
     int left = filteredPane ? PL2_SCount : PL1_SCount;
 
     for (int i = 0; i < 7; ++i)
@@ -253,18 +385,17 @@ void DrawPaneHeader(HWND mainWindow, HWND pane, bool filteredPane, bool withRx)
 
     if (withRx)
     {
-        char rxText[24];
+        char rxText[32];
         COLORREF rxColor;
-        const double quality = Profile.dRX_Quality;
-        if (quality <= 0.0)
+        if (dRX_Quality <= 0.0)
         {
             strcpy_s(rxText, sizeof(rxText), "RX idle");
             rxColor = dark ? RGB(180, 180, 180) : RGB(96, 96, 96);
         }
         else
         {
-            sprintf_s(rxText, sizeof(rxText), "RX %.0f%%", quality);
-            rxColor = quality >= 96.0 ? RGB(16, 124, 16) : RGB(196, 43, 28);
+            sprintf_s(rxText, sizeof(rxText), "RX %.0f%%", dRX_Quality);
+            rxColor = dRX_Quality >= 96.0 ? RGB(16, 124, 16) : RGB(196, 43, 28);
         }
 
         const int rxLeft = client.right - rxWidth;
@@ -294,14 +425,30 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
                                         LPARAM lParam, UINT_PTR subclassId,
                                         DWORD_PTR referenceData)
 {
+    if (message == WM_COMMAND && LOWORD(wParam) == kModernMenuCommandId)
+    {
+        ShowModernMenu(hwnd);
+        return 0;
+    }
+
     const LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
 
     switch (message)
     {
+        case kEnableModernShellMessage:
+            DetachLegacyMenu(hwnd);
+            StyleMainToolbar(hwnd);
+            DrawModernMainChrome(hwnd);
+            break;
+
         case WM_PAINT:
         case WM_SIZE:
         case WM_NOTIFY:
             DrawModernMainChrome(hwnd);
+            break;
+
+        case WM_TIMER:
+            if (wParam == kLegacySecondTimer) DrawModernMainChrome(hwnd);
             break;
 
         case WM_NCDESTROY:
@@ -334,6 +481,9 @@ void ApplyWindows11MainWindowStyle(HWND hwnd)
 {
     if (!hwnd) return;
 
+    g_chromeEnabled = true;
+    if (!ghMenu) ghMenu = GetMenu(hwnd);
+
     ApplyRoundedCorners(hwnd);
 
     const BOOL dark = AppsPreferDarkMode() ? TRUE : FALSE;
@@ -344,11 +494,17 @@ void ApplyWindows11MainWindowStyle(HWND hwnd)
 
     StyleMainToolbar(hwnd);
     SetWindowSubclass(hwnd, MainWindowSubclassProc, kMainWindowSubclassId, 0);
+
+    // Defer removing the old menu strip until WinMain has populated dynamic
+    // language entries and menu check states. The posted message is handled
+    // only once the application's normal message loop starts.
+    PostMessage(hwnd, kEnableModernShellMessage, 0, 0);
 }
 
 void InstallWindows11DialogStyling()
 {
     if (g_dialogHook) return;
+
     g_dialogHook = SetWindowsHookExW(WH_CALLWNDPROCRET, DialogCallWndRetProc,
                                     NULL, GetCurrentThreadId());
 }
@@ -363,6 +519,7 @@ void ApplyWindows11DialogStyle(HWND hwnd)
     HFONT font = GetDialogFont();
     if (font) SendMessage(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     EnumChildWindows(hwnd, StyleDialogChild, reinterpret_cast<LPARAM>(font));
+
     InvalidateRect(hwnd, NULL, TRUE);
 }
 
@@ -370,6 +527,11 @@ void ApplyWindows11ControlStyle(HWND hwnd)
 {
     if (!hwnd) return;
     SetWindowTheme(hwnd, L"Explorer", NULL);
+}
+
+bool IsWindows11ChromeEnabled()
+{
+    return g_chromeEnabled;
 }
 
 } // namespace pdw
