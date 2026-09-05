@@ -1,0 +1,156 @@
+name: PDW Windows UI smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - modernization/windows11-ui
+    paths:
+      - "utils/windows11_*.cpp"
+      - "utils/windows11_ui.h"
+      - "gfx_startup_guard.cpp"
+      - ".github/workflows/ui-smoke.yml"
+
+jobs:
+  ui-smoke:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare VS2022 CMake
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $cmake = Get-Command cmake.exe -ErrorAction SilentlyContinue
+          if (-not $cmake) {
+            $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+            if (-not (Test-Path $vswhere)) {
+              throw "CMake is not on PATH and vswhere.exe was not found."
+            }
+            $vsInstall = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1)
+            if (-not $vsInstall) { throw "Visual Studio C++ build tools were not found." }
+            $cmakeDir = Join-Path $vsInstall "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+            $cmakeExe = Join-Path $cmakeDir "cmake.exe"
+            if (-not (Test-Path $cmakeExe)) { throw "Visual Studio CMake component is missing." }
+            $cmakeDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+
+      - name: Configure UI smoke build
+        shell: powershell
+        run: |
+          cmake -S . -B build-ui `
+            -G "Visual Studio 17 2022" `
+            -A Win32 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_TESTING=OFF
+
+      - name: Build UI smoke executable
+        shell: powershell
+        run: cmake --build build-ui --config Release
+
+      - name: Capture main-window screenshot
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          Add-Type -AssemblyName System.Drawing
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+
+          public static class PdwWindowCapture {
+              [StructLayout(LayoutKind.Sequential)]
+              public struct RECT {
+                  public int Left;
+                  public int Top;
+                  public int Right;
+                  public int Bottom;
+              }
+
+              [DllImport("user32.dll", SetLastError=true)]
+              public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
+              [DllImport("user32.dll", SetLastError=true)]
+              public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint flags);
+
+              [DllImport("user32.dll", SetLastError=true)]
+              public static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter,
+                  int x, int y, int cx, int cy, uint flags);
+
+              [DllImport("user32.dll")]
+              public static extern bool ShowWindow(IntPtr hWnd, int command);
+          }
+          "@
+
+          $exe = (Resolve-Path ".\build-ui\Release\PDW.exe").Path
+          $outDir = Join-Path $PWD "ui-smoke"
+          New-Item -ItemType Directory -Force $outDir | Out-Null
+          $png = Join-Path $outDir "pdw-main-window.png"
+
+          $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+          try {
+            $deadline = (Get-Date).AddSeconds(20)
+            do {
+              Start-Sleep -Milliseconds 250
+              $process.Refresh()
+              if ($process.HasExited) {
+                throw "PDW exited before its main window became available (exit $($process.ExitCode))."
+              }
+            } while ($process.MainWindowHandle -eq 0 -and (Get-Date) -lt $deadline)
+
+            if ($process.MainWindowHandle -eq 0) {
+              throw "PDW main window did not become available within 20 seconds."
+            }
+
+            $hwnd = [IntPtr]$process.MainWindowHandle
+            [PdwWindowCapture]::ShowWindow($hwnd, 9) | Out-Null
+            [PdwWindowCapture]::SetWindowPos($hwnd, [IntPtr]::Zero, 80, 80, 1280, 820, 0x0014) | Out-Null
+            Start-Sleep -Seconds 2
+
+            $rect = New-Object PdwWindowCapture+RECT
+            if (-not [PdwWindowCapture]::GetWindowRect($hwnd, [ref]$rect)) {
+              throw "GetWindowRect failed."
+            }
+            $width = $rect.Right - $rect.Left
+            $height = $rect.Bottom - $rect.Top
+            if ($width -lt 400 -or $height -lt 300) {
+              throw "Captured PDW window size is unexpectedly small: ${width}x${height}."
+            }
+
+            $bitmap = New-Object System.Drawing.Bitmap($width, $height)
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            $hdc = $graphics.GetHdc()
+            try {
+              $captured = [PdwWindowCapture]::PrintWindow($hwnd, $hdc, 2)
+            }
+            finally {
+              $graphics.ReleaseHdc($hdc)
+              $graphics.Dispose()
+            }
+
+            if (-not $captured) {
+              $bitmap.Dispose()
+              throw "PrintWindow failed to capture the PDW main window."
+            }
+
+            $bitmap.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
+            $bitmap.Dispose()
+            Write-Host "UI screenshot saved to $png (${width}x${height})."
+          }
+          finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Upload UI smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDW-Windows11-UI-smoke
+          path: |
+            ui-smoke/pdw-main-window.png
+            build-ui/Release/PDW.exe
+          if-no-files-found: error
+          retention-days: 30
