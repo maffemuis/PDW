@@ -7447,7 +7447,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 
 	static bool bApplying=false, bFilterJump=false;
 
-	int type=0, monitor_only=0, reject=0, match_exact=0, label_en=0, smtp=0;
+	int type=0, filter_type=0, monitor_only=0, reject=0, match_exact=0, label_en=0, smtp=0;
 	int filter_cmd=0, color=0, audio=0, iHits=0;
 	int sep_en=0, sep1=0, sep2=0, sep3=0;
 	
@@ -7717,6 +7717,10 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 			{
 				SendDlgItemMessage(hDlg, IDC_FILTERTYPE, CB_ADDSTRING, 0, (LPARAM) (LPSTR) types[i]);
 			}
+			if (multiple_edit)
+			{
+				SendDlgItemMessage(hDlg, IDC_FILTERTYPE, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "Don't change");
+			}
 
 			SendMessage(hListView, LVM_SETBKCOLOR, 0, Profile.color_background);
 
@@ -7756,6 +7760,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 			{
 				while ((index = ListView_GetNextItem(hListView, index, LVNI_SELECTED)) != CB_ERR)
 				{
+					if (Profile.filters[index].type != filter.type) filter_type=1;
 					if (strcmp(Profile.filters[index].capcode, filter.capcode) != 0) capcode=1;
 					if (strcmp(Profile.filters[index].text, filter.text) != 0) text=1;
 					if (strcmp(Profile.filters[index].label, filter.label) != 0) label=1;
@@ -7882,7 +7887,8 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 		}
 		else EnableWindow(GetDlgItem(hDlg, IDC_FILTERAUDIO), FALSE); // If Monitor-Only == BST_INDETERMINATE
 
-		SendDlgItemMessage(hDlg, IDC_FILTERTYPE, CB_SETCURSEL, (WPARAM) filter.type-1, 0L);
+		SendDlgItemMessage(hDlg, IDC_FILTERTYPE, CB_SETCURSEL,
+			(WPARAM) ((multiple_edit && filter_type) ? 6 : filter.type-1), 0L);
 
 		if (filter.type == MOBITEX_FILTER)
 		{
@@ -7941,7 +7947,10 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 
 		if (wParam) break;	// Set if initializing dialog
 
-		type		  = (FILTER_TYPE) (SendDlgItemMessage(hDlg, IDC_FILTERTYPE, CB_GETCURSEL, 0, 0L)+1);
+		{
+			int type_selection = SendDlgItemMessage(hDlg, IDC_FILTERTYPE, CB_GETCURSEL, 0, 0L);
+			type = (multiple_edit && type_selection == 6) ? filter.type : (FILTER_TYPE) (type_selection+1);
+		}
 		reject		  = IsDlgButtonChecked(hDlg, IDC_FILTERREJECT);
 		monitor_only  = IsDlgButtonChecked(hDlg, IDC_FILTER_MONITOR_ONLY);
 		multiple_edit = ListView_GetSelectedCount(hListView) > 1;
@@ -8017,7 +8026,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 		{
 			 EnableWindow(GetDlgItem(hDlg, IDC_FILTERAUDIO), (!reject && captxt));
 		}
-		else EnableWindow(GetDlgItem(hDlg, IDC_FILTERAUDIO), false);
+		else EnableWindow(GetDlgItem(hDlg, IDC_FILTERAUDIO), multiple_edit ? true : false);
 
 		EnableWindow(GetDlgItem(hDlg, IDC_FILTERLABEL),      (!reject && captxt));
 		EnableWindow(GetDlgItem(hDlg, IDC_FILTERLABELEN),    (!reject && label));
@@ -8057,7 +8066,13 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 
 			if (HIWORD(wParam) == CBN_SELENDOK)
 			{
-				filter.type = (FILTER_TYPE) (SendDlgItemMessage(hDlg, IDC_FILTERTYPE, CB_GETCURSEL, 0, 0L)+1);
+				int type_selection = SendDlgItemMessage(hDlg, IDC_FILTERTYPE, CB_GETCURSEL, 0, 0L);
+				if (multiple_edit && type_selection == 6)
+				{
+					SendMessage(hDlg, WM_WININICHANGE, initializing, 0L);
+					break;
+				}
+				filter.type = (FILTER_TYPE) (type_selection+1);
 
 				if (filter.type == TEXT_FILTER)  // if TEXT filter
 				{
@@ -8497,6 +8512,12 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 				if (IsDlgButtonChecked(hDlg, IDC_FILTERREJECT) != BST_INDETERMINATE)
 				{
 					Profile.filters[index].reject = filter.reject;
+				}
+
+				int type_selection = SendDlgItemMessage(hDlg, IDC_FILTERTYPE, CB_GETCURSEL, 0, 0L);
+				if (!(multiple_edit && type_selection == 6))
+				{
+					Profile.filters[index].type = (FILTER_TYPE) (type_selection+1);
 				}
 
 				if (!filter.reject)
