@@ -9,16 +9,15 @@
 #include "..\\Headers\\pdw.h"
 #include "..\\Headers\\gfx.h"
 #include "..\\Headers\\initapp.h"
+#include "..\\Headers\\Resource.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 extern double dRX_Quality;
+extern bool bPauseFlag;
 
 namespace {
 
-// Numeric values are used intentionally so the build remains source-compatible
-// with older Windows SDK headers. Unsupported attributes simply fail harmlessly
-// on pre-Windows-11 systems.
 const DWORD kDwmUseImmersiveDarkMode = 20;
 const DWORD kDwmWindowCornerPreference = 33;
 const DWORD kDwmSystemBackdropType = 38;
@@ -26,14 +25,31 @@ const int kDwmCornerRound = 2;
 const int kDwmBackdropMainWindow = 2;
 const UINT_PTR kMainWindowSubclassId = 0x50445711;
 const UINT kEnableModernShellMessage = WM_APP + 0x51;
-const int kModernMenuCommandId = 50000;
 const WPARAM kLegacySecondTimer = 103;
+const int kSettingsPopupCommand = 50001;
+const int kResumeMonitorCommand = 50002;
+const int kShellHeight = 49;
+const int kNavHeight = 24;
+const int kCommandTop = 25;
+const int kCommandHeight = 23;
 
 HFONT g_dialogFont = NULL;
 HFONT g_headerFont = NULL;
+HFONT g_iconFont = NULL;
 HHOOK g_dialogHook = NULL;
 bool g_chromeEnabled = false;
 bool g_legacyMenuDetached = false;
+
+struct ShellHitTarget
+{
+    RECT rect;
+    int command;
+};
+
+ShellHitTarget g_navTargets[6];
+ShellHitTarget g_commandTargets[11];
+int g_navTargetCount = 0;
+int g_commandTargetCount = 0;
 
 bool AppsPreferDarkMode()
 {
@@ -51,7 +67,6 @@ bool AppsPreferDarkMode()
     const LONG result = RegQueryValueExW(key, L"AppsUseLightTheme", NULL, NULL,
                                          reinterpret_cast<LPBYTE>(&value), &size);
     RegCloseKey(key);
-
     return result == ERROR_SUCCESS && value == 0;
 }
 
@@ -62,7 +77,6 @@ HFONT GetDialogFont()
     NONCLIENTMETRICSW metrics;
     ZeroMemory(&metrics, sizeof(metrics));
     metrics.cbSize = sizeof(metrics);
-
     if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0))
     {
         g_dialogFont = CreateFontIndirectW(&metrics.lfMessageFont);
@@ -75,14 +89,12 @@ HFONT GetDialogFont()
                                   CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                   DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
     }
-
     return g_dialogFont;
 }
 
 HFONT GetHeaderFont()
 {
     if (g_headerFont) return g_headerFont;
-
     g_headerFont = CreateFontW(-12, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
                                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
                                CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
@@ -91,11 +103,20 @@ HFONT GetHeaderFont()
     return g_headerFont;
 }
 
+HFONT GetIconFont()
+{
+    if (g_iconFont) return g_iconFont;
+    g_iconFont = CreateFontW(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                             CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                             DEFAULT_PITCH | FF_DONTCARE, L"Segoe MDL2 Assets");
+    return g_iconFont;
+}
+
 BOOL CALLBACK StyleDialogChild(HWND child, LPARAM fontParam)
 {
     HFONT font = reinterpret_cast<HFONT>(fontParam);
     if (font) SendMessage(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-
     SetWindowTheme(child, L"Explorer", NULL);
     return TRUE;
 }
@@ -108,154 +129,10 @@ void ApplyRoundedCorners(HWND hwnd)
                           &preference, sizeof(preference));
 }
 
-void StyleMainToolbar(HWND mainWindow)
+void HideLegacyToolbar(HWND mainWindow)
 {
     HWND toolbar = FindWindowExW(mainWindow, NULL, TOOLBARCLASSNAMEW, NULL);
-    if (!toolbar) return;
-
-    // Preserve all existing command IDs while replacing the 16x16 bitmap strip
-    // with a compact Windows 11 text command surface.
-    static const char* labels[] = {
-        "Log", "Copy", "Monitor", "Filtered", "Save", "Print",
-        "Options", "Filters", "Stats", "Pause", "Help", "Clear", "Mode"
-    };
-
-    LONG_PTR style = GetWindowLongPtr(toolbar, GWL_STYLE);
-    style |= TBSTYLE_FLAT | TBSTYLE_TOOLTIPS | TBSTYLE_LIST | CCS_NODIVIDER;
-    style &= ~WS_BORDER;
-    SetWindowLongPtr(toolbar, GWL_STYLE, style);
-
-    SetWindowTheme(toolbar, L"Explorer", NULL);
-    SendMessage(toolbar, TB_SETEXTENDEDSTYLE, 0, TBSTYLE_EX_DOUBLEBUFFER);
-    SendMessage(toolbar, TB_SETPADDING, 0, MAKELPARAM(9, 5));
-
-    HFONT font = GetDialogFont();
-    if (font) SendMessage(toolbar, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-
-    const int count = static_cast<int>(SendMessage(toolbar, TB_BUTTONCOUNT, 0, 0));
-    int textIndex = 0;
-    for (int i = 0; i < count && textIndex < static_cast<int>(sizeof(labels) / sizeof(labels[0])); ++i)
-    {
-        TBBUTTON button;
-        ZeroMemory(&button, sizeof(button));
-        if (!SendMessage(toolbar, TB_GETBUTTON, i, reinterpret_cast<LPARAM>(&button))) continue;
-        if (button.fsStyle & BTNS_SEP) continue;
-
-        TBBUTTONINFOA info;
-        ZeroMemory(&info, sizeof(info));
-        info.cbSize = sizeof(info);
-        info.dwMask = TBIF_TEXT | TBIF_IMAGE | TBIF_STYLE;
-        info.pszText = const_cast<LPSTR>(labels[textIndex++]);
-        info.iImage = I_IMAGENONE;
-        info.fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT;
-        SendMessageA(toolbar, TB_SETBUTTONINFOA, button.idCommand,
-                     reinterpret_cast<LPARAM>(&info));
-    }
-
-    // The old menu bar is exposed through one compact Menu entry. This keeps
-    // every legacy function reachable without carrying the classic menu strip.
-    if (SendMessage(toolbar, TB_COMMANDTOINDEX, kModernMenuCommandId, 0) == -1)
-    {
-        const LRESULT stringIndex = SendMessageA(toolbar, TB_ADDSTRINGA, 0,
-                                                  reinterpret_cast<LPARAM>("Menu"));
-        TBBUTTON menuButton;
-        ZeroMemory(&menuButton, sizeof(menuButton));
-        menuButton.iBitmap = I_IMAGENONE;
-        menuButton.idCommand = kModernMenuCommandId;
-        menuButton.fsState = TBSTATE_ENABLED;
-        menuButton.fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT;
-        menuButton.iString = stringIndex;
-        SendMessageA(toolbar, TB_INSERTBUTTONA, 0, reinterpret_cast<LPARAM>(&menuButton));
-    }
-
-    SendMessage(toolbar, TB_AUTOSIZE, 0, 0);
-    InvalidateRect(toolbar, NULL, TRUE);
-}
-
-UINT MenuStateToFlags(UINT state)
-{
-    UINT flags = MF_STRING;
-    if (state & MFS_CHECKED) flags |= MF_CHECKED;
-    if (state & (MFS_DISABLED | MFS_GRAYED)) flags |= MF_GRAYED;
-    return flags;
-}
-
-HMENU CloneMenuTree(HMENU source)
-{
-    if (!source) return NULL;
-
-    HMENU copy = CreatePopupMenu();
-    if (!copy) return NULL;
-
-    const int count = GetMenuItemCount(source);
-    for (int i = 0; i < count; ++i)
-    {
-        char text[256];
-        ZeroMemory(text, sizeof(text));
-
-        MENUITEMINFOA item;
-        ZeroMemory(&item, sizeof(item));
-        item.cbSize = sizeof(item);
-        item.fMask = MIIM_FTYPE | MIIM_STATE | MIIM_ID | MIIM_SUBMENU | MIIM_STRING;
-        item.dwTypeData = text;
-        item.cch = sizeof(text) - 1;
-
-        if (!GetMenuItemInfoA(source, i, TRUE, &item)) continue;
-
-        if (item.fType & MFT_SEPARATOR)
-        {
-            AppendMenuA(copy, MF_SEPARATOR, 0, NULL);
-            continue;
-        }
-
-        if (item.hSubMenu)
-        {
-            HMENU child = CloneMenuTree(item.hSubMenu);
-            if (child)
-            {
-                AppendMenuA(copy, MenuStateToFlags(item.fState) | MF_POPUP,
-                            reinterpret_cast<UINT_PTR>(child), text);
-            }
-        }
-        else
-        {
-            AppendMenuA(copy, MenuStateToFlags(item.fState), item.wID, text);
-        }
-    }
-
-    return copy;
-}
-
-void ShowModernMenu(HWND mainWindow)
-{
-    if (!ghMenu) ghMenu = GetMenu(mainWindow);
-    if (!ghMenu) return;
-
-    HWND toolbar = FindWindowExW(mainWindow, NULL, TOOLBARCLASSNAMEW, NULL);
-    if (!toolbar) return;
-
-    HMENU popup = CloneMenuTree(ghMenu);
-    if (!popup) return;
-
-    RECT buttonRect;
-    ZeroMemory(&buttonRect, sizeof(buttonRect));
-    const LRESULT index = SendMessage(toolbar, TB_COMMANDTOINDEX, kModernMenuCommandId, 0);
-    if (index >= 0)
-    {
-        SendMessage(toolbar, TB_GETITEMRECT, index, reinterpret_cast<LPARAM>(&buttonRect));
-    }
-    MapWindowPoints(toolbar, NULL, reinterpret_cast<POINT*>(&buttonRect), 2);
-
-    const UINT command = TrackPopupMenu(popup,
-                                        TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN | TPM_TOPALIGN,
-                                        buttonRect.left, buttonRect.bottom + 2, 0,
-                                        mainWindow, NULL);
-    if (command)
-    {
-        SendMessage(mainWindow, WM_COMMAND, MAKEWPARAM(command, 0), 0);
-    }
-
-    DestroyMenu(popup);
+    if (toolbar) ShowWindow(toolbar, SW_HIDE);
 }
 
 void DetachLegacyMenu(HWND mainWindow)
@@ -263,13 +140,212 @@ void DetachLegacyMenu(HWND mainWindow)
     if (g_legacyMenuDetached) return;
     if (!ghMenu) ghMenu = GetMenu(mainWindow);
     if (!ghMenu) return;
-
     if (GetMenu(mainWindow) == ghMenu)
     {
         SetMenu(mainWindow, NULL);
         DrawMenuBar(mainWindow);
     }
     g_legacyMenuDetached = true;
+}
+
+void FillRoundedRect(HDC hdc, const RECT& rect, COLORREF fill, COLORREF border, int radius)
+{
+    HBRUSH brush = CreateSolidBrush(fill);
+    HPEN pen = CreatePen(PS_SOLID, 1, border);
+    HGDIOBJ oldBrush = SelectObject(hdc, brush);
+    HGDIOBJ oldPen = SelectObject(hdc, pen);
+    RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, radius, radius);
+    SelectObject(hdc, oldPen);
+    SelectObject(hdc, oldBrush);
+    DeleteObject(pen);
+    DeleteObject(brush);
+}
+
+void DrawIconTextButton(HDC hdc, const RECT& rect, const wchar_t* icon,
+                        const wchar_t* label, bool selected, bool dark)
+{
+    const COLORREF accent = RGB(0, 120, 212);
+    const COLORREF bg = dark ? RGB(38, 38, 38) : RGB(250, 250, 250);
+    const COLORREF fg = dark ? RGB(245, 245, 245) : RGB(30, 30, 30);
+    const COLORREF selectedFg = RGB(255, 255, 255);
+    const COLORREF border = dark ? RGB(62, 62, 62) : RGB(228, 228, 228);
+
+    if (selected)
+        FillRoundedRect(hdc, rect, accent, accent, 14);
+    else
+        FillRoundedRect(hdc, rect, bg, bg, 14);
+
+    int iconWidth = 0;
+    if (icon && icon[0])
+    {
+        RECT iconRect = rect;
+        iconRect.left += 10;
+        iconRect.right = iconRect.left + 20;
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, selected ? selectedFg : accent);
+        HFONT iconFont = GetIconFont();
+        HGDIOBJ oldFont = iconFont ? SelectObject(hdc, iconFont) : NULL;
+        DrawTextW(hdc, icon, -1, &iconRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        if (oldFont) SelectObject(hdc, oldFont);
+        iconWidth = 24;
+    }
+
+    RECT textRect = rect;
+    textRect.left += 10 + iconWidth;
+    textRect.right -= 8;
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, selected ? selectedFg : fg);
+    HFONT font = selected ? GetHeaderFont() : GetDialogFont();
+    HGDIOBJ oldFont = font ? SelectObject(hdc, font) : NULL;
+    DrawTextW(hdc, label, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    if (oldFont) SelectObject(hdc, oldFont);
+
+    if (!selected)
+    {
+        HPEN pen = CreatePen(PS_SOLID, 1, border);
+        HGDIOBJ oldPen = SelectObject(hdc, pen);
+        MoveToEx(hdc, rect.right, rect.top + 5, NULL);
+        LineTo(hdc, rect.right, rect.bottom - 5);
+        SelectObject(hdc, oldPen);
+        DeleteObject(pen);
+    }
+}
+
+void DrawTopNavigation(HDC hdc, const RECT& client, bool dark)
+{
+    static const wchar_t* labels[] = { L"Monitor", L"Filters", L"Replay", L"Logs", L"SMTP", L"Settings" };
+    static const wchar_t* icons[]  = { L"\xE7F4", L"\xE71C", L"\xE72C", L"\xE8A5", L"\xE715", L"\xE713" };
+    static const int commands[] = { 0, IDM_FILTERS, IDM_PLAYBACK, IDM_LOGFILE, IDM_MAIL, kSettingsPopupCommand };
+    static const int widths[] = { 96, 88, 88, 76, 76, 102 };
+
+    const COLORREF shellBg = dark ? RGB(32, 32, 32) : RGB(249, 249, 249);
+    RECT row = { 0, 0, client.right, kNavHeight + 1 };
+    HBRUSH brush = CreateSolidBrush(shellBg);
+    FillRect(hdc, &row, brush);
+    DeleteObject(brush);
+
+    g_navTargetCount = 0;
+    int x = 6;
+    for (int i = 0; i < 6; ++i)
+    {
+        if (x + widths[i] >= client.right - 4) break;
+        RECT r = { x, 2, x + widths[i], kNavHeight - 1 };
+        DrawIconTextButton(hdc, r, icons[i], labels[i], i == 0, dark);
+        g_navTargets[g_navTargetCount].rect = r;
+        g_navTargets[g_navTargetCount].command = commands[i];
+        ++g_navTargetCount;
+        x += widths[i] + 3;
+    }
+}
+
+void DrawCommandStrip(HDC hdc, const RECT& client, bool dark)
+{
+    static const wchar_t* labels[] = {
+        L"Open", L"Save", L"Print", L"Copy", L"Monitor", L"Pause",
+        L"Filters", L"Options", L"Stats", L"Clear", L"Mode"
+    };
+    static const wchar_t* icons[] = {
+        L"\xE8B7", L"\xE74E", L"\xE749", L"\xE8C8", L"\xE768", L"\xE769",
+        L"\xE71C", L"\xE713", L"\xE9D9", L"\xE894", L"\xE7F4"
+    };
+    static const int commands[] = {
+        IDM_PLAYBACK, IDM_COPY_SAVE, IDM_COPY_PRINT, IDM_COPY_SELECTION,
+        kResumeMonitorCommand, IDT_TOOLBAR_BTN9, IDM_FILTERS, IDM_OPTIONS,
+        IDM_MONSTAT, IDM_CLEARDISPLAY, IDT_TOOLBAR_BTN12
+    };
+    static const int widths[] = { 68, 66, 68, 66, 82, 72, 76, 80, 68, 68, 70 };
+
+    const COLORREF rowBg = dark ? RGB(38, 38, 38) : RGB(252, 252, 252);
+    const COLORREF rowBorder = dark ? RGB(64, 64, 64) : RGB(226, 226, 226);
+    RECT bar = { 5, kCommandTop, client.right - 5, kCommandTop + kCommandHeight };
+    FillRoundedRect(hdc, bar, rowBg, rowBorder, 10);
+
+    g_commandTargetCount = 0;
+    int x = 8;
+    for (int i = 0; i < 11; ++i)
+    {
+        if (x + widths[i] >= client.right - 8) break;
+        RECT r = { x, kCommandTop + 1, x + widths[i], kCommandTop + kCommandHeight - 1 };
+        DrawIconTextButton(hdc, r, icons[i], labels[i], false, dark);
+        g_commandTargets[g_commandTargetCount].rect = r;
+        g_commandTargets[g_commandTargetCount].command = commands[i];
+        ++g_commandTargetCount;
+        x += widths[i];
+    }
+}
+
+void DrawModernShell(HWND hwnd)
+{
+    RECT client;
+    GetClientRect(hwnd, &client);
+    HDC hdc = GetDC(hwnd);
+    if (!hdc) return;
+    const bool dark = AppsPreferDarkMode();
+    DrawTopNavigation(hdc, client, dark);
+    DrawCommandStrip(hdc, client, dark);
+    ReleaseDC(hwnd, hdc);
+}
+
+void ShowSettingsMenu(HWND mainWindow, const RECT& anchor)
+{
+    HMENU popup = CreatePopupMenu();
+    HMENU appearance = CreatePopupMenu();
+    if (!popup || !appearance)
+    {
+        if (appearance) DestroyMenu(appearance);
+        if (popup) DestroyMenu(popup);
+        return;
+    }
+
+    AppendMenuA(appearance, MF_STRING, IDM_COLOR, "Colors");
+    AppendMenuA(appearance, MF_STRING, IDM_FONT, "Font");
+    AppendMenuA(appearance, MF_STRING, IDM_SCREENOPTIONS, "Display layout");
+
+    AppendMenuA(popup, MF_STRING, IDM_GENERAL, "General");
+    AppendMenuA(popup, MF_POPUP, reinterpret_cast<UINT_PTR>(appearance), "Appearance");
+    AppendMenuA(popup, MF_STRING, IDM_LOGFILE, "Data & logging");
+    AppendMenuA(popup, MF_STRING, IDM_MAIL, "SMTP / Network");
+    AppendMenuA(popup, MF_SEPARATOR, 0, NULL);
+    AppendMenuA(popup, MF_STRING, IDM_ABOUT, "About PDW");
+
+    POINT pt = { anchor.left, anchor.bottom + 3 };
+    ClientToScreen(mainWindow, &pt);
+    const UINT command = TrackPopupMenu(popup,
+                                        TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN | TPM_TOPALIGN,
+                                        pt.x, pt.y, 0, mainWindow, NULL);
+    if (command) SendMessage(mainWindow, WM_COMMAND, MAKEWPARAM(command, 0), 0);
+    DestroyMenu(popup);
+}
+
+bool HandleShellClick(HWND hwnd, POINT point)
+{
+    for (int i = 0; i < g_navTargetCount; ++i)
+    {
+        if (!PtInRect(&g_navTargets[i].rect, point)) continue;
+        const int command = g_navTargets[i].command;
+        if (command == 0) return true;
+        if (command == kSettingsPopupCommand)
+        {
+            ShowSettingsMenu(hwnd, g_navTargets[i].rect);
+            return true;
+        }
+        SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(command, 0), 0);
+        return true;
+    }
+
+    for (int i = 0; i < g_commandTargetCount; ++i)
+    {
+        if (!PtInRect(&g_commandTargets[i].rect, point)) continue;
+        const int command = g_commandTargets[i].command;
+        if (command == kResumeMonitorCommand)
+        {
+            if (bPauseFlag) SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(IDT_TOOLBAR_BTN9, 0), 0);
+            return true;
+        }
+        SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(command, 0), 0);
+        return true;
+    }
+    return false;
 }
 
 const char* HeaderLabelForItem(int item)
@@ -323,11 +399,9 @@ void DrawHeaderCell(HDC hdc, int x, int y, int width, int height,
     SetTextColor(hdc, foreground);
     HFONT font = GetHeaderFont();
     HGDIOBJ oldFont = font ? SelectObject(hdc, font) : NULL;
-
     RECT textRect = { cell.left + 9, cell.top, cell.right - 7, cell.bottom };
     DrawTextA(hdc, text, -1, &textRect,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-
     if (oldFont) SelectObject(hdc, oldFont);
 }
 
@@ -337,38 +411,29 @@ void DrawPaneHeader(HWND mainWindow, HWND pane, bool filteredPane, bool withRx)
 
     RECT paneRect;
     if (!GetWindowRect(pane, &paneRect)) return;
-
-    POINT points[2] = {
-        { paneRect.left, paneRect.top },
-        { paneRect.right, paneRect.bottom }
-    };
+    POINT points[2] = { { paneRect.left, paneRect.top }, { paneRect.right, paneRect.bottom } };
     MapWindowPoints(NULL, mainWindow, points, 2);
 
     RECT client;
     GetClientRect(mainWindow, &client);
-
     const int headerHeight = TITLE_BAR_SIZE;
     const int y = points[0].y - headerHeight - 1;
-    if (y < 0) return;
+    if (y < kShellHeight - 2) return;
 
     HDC hdc = GetDC(mainWindow);
     if (!hdc) return;
 
     SetMessageItemPositionsWidth();
     const bool dark = AppsPreferDarkMode();
-    const int rxWidth = withRx ? 92 : 0;
+    const int rxWidth = withRx ? 82 : 0;
     int left = filteredPane ? PL2_SCount : PL1_SCount;
 
     for (int i = 0; i < 7; ++i)
     {
         const int item = Profile.ScreenColumns[i];
         if (item == 0) break;
-
         int width = 0;
-        if (item == 7)
-        {
-            width = client.right - left - rxWidth;
-        }
+        if (item == 7) width = client.right - left - rxWidth;
         else
         {
             width = iItemWidths[item];
@@ -377,37 +442,32 @@ void DrawPaneHeader(HWND mainWindow, HWND pane, bool filteredPane, bool withRx)
 
         const char* label = HeaderLabelForItem(item);
         if (item == 7) label = filteredPane ? "Filtered messages" : "Monitored messages";
-
-        DrawHeaderCell(hdc, left, y, width, headerHeight, label, dark,
-                       item != 7 || withRx);
+        DrawHeaderCell(hdc, left, y, width, headerHeight, label, dark, item != 7 || withRx);
         left += width;
     }
 
     if (withRx)
     {
-        char rxText[32];
-        COLORREF rxColor;
-        if (dRX_Quality <= 0.0)
-        {
-            strcpy_s(rxText, sizeof(rxText), "RX idle");
-            rxColor = dark ? RGB(180, 180, 180) : RGB(96, 96, 96);
-        }
-        else
-        {
-            sprintf_s(rxText, sizeof(rxText), "RX %.0f%%", dRX_Quality);
-            rxColor = dRX_Quality >= 96.0 ? RGB(16, 124, 16) : RGB(196, 43, 28);
-        }
-
+        const COLORREF fg = dark ? RGB(235, 235, 235) : RGB(30, 30, 30);
+        const COLORREF dot = dRX_Quality > 0.0 ? RGB(16, 124, 16) : RGB(145, 145, 145);
         const int rxLeft = client.right - rxWidth;
         DrawHeaderCell(hdc, rxLeft, y, rxWidth, headerHeight, "", dark, false);
         SetBkMode(hdc, TRANSPARENT);
-        SetTextColor(hdc, rxColor);
+        SetTextColor(hdc, fg);
         HFONT font = GetHeaderFont();
         HGDIOBJ oldFont = font ? SelectObject(hdc, font) : NULL;
-        RECT rxRect = { rxLeft + 4, y, client.right - 4, y + headerHeight };
-        DrawTextA(hdc, rxText, -1, &rxRect,
-                  DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        RECT rxText = { rxLeft + 7, y, client.right - 20, y + headerHeight };
+        DrawTextA(hdc, "RX-Q", -1, &rxText, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
         if (oldFont) SelectObject(hdc, oldFont);
+        HBRUSH dotBrush = CreateSolidBrush(dot);
+        HGDIOBJ oldBrush = SelectObject(hdc, dotBrush);
+        HPEN dotPen = CreatePen(PS_SOLID, 1, dot);
+        HGDIOBJ oldDotPen = SelectObject(hdc, dotPen);
+        Ellipse(hdc, client.right - 16, y + 6, client.right - 8, y + 14);
+        SelectObject(hdc, oldDotPen);
+        SelectObject(hdc, oldBrush);
+        DeleteObject(dotPen);
+        DeleteObject(dotBrush);
     }
 
     ReleaseDC(mainWindow, hdc);
@@ -415,6 +475,7 @@ void DrawPaneHeader(HWND mainWindow, HWND pane, bool filteredPane, bool withRx)
 
 void DrawModernMainChrome(HWND hwnd)
 {
+    DrawModernShell(hwnd);
     HWND pane1 = FindWindowExA(hwnd, NULL, "WinPDWPane1Class", NULL);
     HWND pane2 = FindWindowExA(hwnd, NULL, "WinPDWPane2Class", NULL);
     DrawPaneHeader(hwnd, pane1, false, true);
@@ -425,10 +486,10 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
                                         LPARAM lParam, UINT_PTR subclassId,
                                         DWORD_PTR referenceData)
 {
-    if (message == WM_COMMAND && LOWORD(wParam) == kModernMenuCommandId)
+    if (message == WM_LBUTTONUP)
     {
-        ShowModernMenu(hwnd);
-        return 0;
+        POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+        if (point.y < kShellHeight && HandleShellClick(hwnd, point)) return 0;
     }
 
     const LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
@@ -437,7 +498,7 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
     {
         case kEnableModernShellMessage:
             DetachLegacyMenu(hwnd);
-            StyleMainToolbar(hwnd);
+            HideLegacyToolbar(hwnd);
             DrawModernMainChrome(hwnd);
             break;
 
@@ -450,6 +511,20 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
         case WM_TIMER:
             if (wParam == kLegacySecondTimer) DrawModernMainChrome(hwnd);
             break;
+
+        case WM_SETCURSOR:
+        {
+            POINT screen;
+            GetCursorPos(&screen);
+            POINT client = screen;
+            ScreenToClient(hwnd, &client);
+            if (client.y >= 0 && client.y < kShellHeight)
+            {
+                SetCursor(LoadCursor(NULL, IDC_HAND));
+                return TRUE;
+            }
+            break;
+        }
 
         case WM_NCDESTROY:
             RemoveWindowSubclass(hwnd, MainWindowSubclassProc, subclassId);
@@ -465,11 +540,8 @@ LRESULT CALLBACK DialogCallWndRetProc(int code, WPARAM wParam, LPARAM lParam)
     {
         const CWPRETSTRUCT* info = reinterpret_cast<const CWPRETSTRUCT*>(lParam);
         if (info->message == WM_INITDIALOG)
-        {
             pdw::ApplyWindows11DialogStyle(info->hwnd);
-        }
     }
-
     return CallNextHookEx(g_dialogHook, code, wParam, lParam);
 }
 
@@ -483,28 +555,20 @@ void ApplyWindows11MainWindowStyle(HWND hwnd)
 
     g_chromeEnabled = true;
     if (!ghMenu) ghMenu = GetMenu(hwnd);
-
     ApplyRoundedCorners(hwnd);
 
     const BOOL dark = AppsPreferDarkMode() ? TRUE : FALSE;
     DwmSetWindowAttribute(hwnd, kDwmUseImmersiveDarkMode, &dark, sizeof(dark));
-
     int backdrop = kDwmBackdropMainWindow;
     DwmSetWindowAttribute(hwnd, kDwmSystemBackdropType, &backdrop, sizeof(backdrop));
 
-    StyleMainToolbar(hwnd);
     SetWindowSubclass(hwnd, MainWindowSubclassProc, kMainWindowSubclassId, 0);
-
-    // Defer removing the old menu strip until WinMain has populated dynamic
-    // language entries and menu check states. The posted message is handled
-    // only once the application's normal message loop starts.
     PostMessage(hwnd, kEnableModernShellMessage, 0, 0);
 }
 
 void InstallWindows11DialogStyling()
 {
     if (g_dialogHook) return;
-
     g_dialogHook = SetWindowsHookExW(WH_CALLWNDPROCRET, DialogCallWndRetProc,
                                     NULL, GetCurrentThreadId());
 }
@@ -512,14 +576,11 @@ void InstallWindows11DialogStyling()
 void ApplyWindows11DialogStyle(HWND hwnd)
 {
     if (!hwnd) return;
-
     ApplyRoundedCorners(hwnd);
     SetWindowTheme(hwnd, L"Explorer", NULL);
-
     HFONT font = GetDialogFont();
     if (font) SendMessage(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     EnumChildWindows(hwnd, StyleDialogChild, reinterpret_cast<LPARAM>(font));
-
     InvalidateRect(hwnd, NULL, TRUE);
 }
 
