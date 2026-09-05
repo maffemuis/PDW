@@ -4,7 +4,6 @@
 //
 //            - Routines for adjusting the Monitor menu.
 //            - Routines for adjusting the language menu.
-//            - Routines which set the current language table.
 //
 
 #ifndef STRICT
@@ -44,7 +43,7 @@ void check_menu_item(int submenu_no,UINT item_id,BOOL item_checked)
 	HMENU hsubmenu = NULL;   
 	MENUITEMINFO miInfo;
 
-	hmenu    = GetMenu(ghWnd);
+	hmenu    = ghMenu ? ghMenu : GetMenu(ghWnd);
 	hsubmenu = GetSubMenu(hmenu, submenu_no);         
 
 	miInfo.cbSize = sizeof(MENUITEMINFO);  
@@ -127,7 +126,7 @@ void set_lang_menu(void)
    int id=1;
       
   /* get handle of main menu */
-   hmenu = GetMenu(ghWnd);
+   hmenu = ghMenu ? ghMenu : GetMenu(ghWnd);
 
   /* get handle of 1st popup menu */
    hsubmenu = GetSubMenu(hmenu, 7); 
