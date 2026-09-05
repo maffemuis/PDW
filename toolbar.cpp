@@ -15,6 +15,7 @@
 
 #include "headers\resource.h"
 #include "headers\toolbar.h"
+#include "utils\windows11_ui.h"
 
 
 #define NUM_TB_BUTTONS 18   // 14 buttons and 5 seperators
@@ -42,17 +43,18 @@ HWND ShowMakeToolBar(HWND parent_hwnd,HINSTANCE hThisInstance)
 	{
 		SetToolBarButtons();            // Set type/state for each button
 
-		// Create Toolbar without buttons. Add these later
+		// Keep the proven toolbar commands and bitmaps, but let Windows render a
+		// flat modern command surface instead of the old framed 3D toolbar.
 		tbhwnd = CreateToolbarEx(parent_hwnd,
-							     WS_CHILD|WS_VISIBLE|WS_DLGFRAME|TBSTYLE_TOOLTIPS,
+							     WS_CHILD | WS_VISIBLE | TBSTYLE_TOOLTIPS | TBSTYLE_FLAT | CCS_NODIVIDER,
 								 IDW_TOOL_BAR,
 								 0,
 								 NULL,
 								 0,
 								 0,
 								 0,
-								 18,
-								 18,
+								 28,
+								 28,
 								 18,
 								 18,
 								 sizeof(TBBUTTON));
@@ -62,6 +64,11 @@ HWND ShowMakeToolBar(HWND parent_hwnd,HINSTANCE hThisInstance)
 			FreeToolBarImages(hThisInstance);  // error? - free any allocated objects
 			return(NULL);
 		}
+
+		pdw::ApplyWindows11ControlStyle(tbhwnd);
+		SendMessage(tbhwnd, TB_SETEXTENDEDSTYLE, 0, TBSTYLE_EX_DOUBLEBUFFER);
+		SendMessage(tbhwnd, TB_SETPADDING, 0, MAKELPARAM(4, 4));
+
 		Add_TB_ButtonsBitmaps(tbhwnd,hThisInstance); // Add rest of bitmaps/buttons.
 	}
 
