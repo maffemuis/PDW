@@ -49,6 +49,47 @@ bool VerifyBits(const char *bits, const BYTE *data, DWORD length)
     }
     return *bits == '\0';
 }
+
+BOOL ReplayRs232Sink(DWORD relative_ms, const BYTE *data, DWORD length, void *context)
+{
+    (void)relative_ms;
+    return RxRs232FeedBytes((RX_RS232_BOUNDARY *)context, data, length);
+}
+}
+
+BOOL RxRs232FeedBytes(RX_RS232_BOUNDARY *boundary, const BYTE *data, DWORD length)
+{
+    if (!boundary || !boundary->freqdata || !boundary->linedata || !boundary->position ||
+        boundary->capacity == 0 || *boundary->position >= boundary->capacity ||
+        (length != 0 && !data))
+        return FALSE;
+
+    for (DWORD i = 0; i < length; ++i)
+    {
+        if (boundary->fourlevel)
+        {
+            for (int shift = 6; shift >= 0; shift -= 2)
+            {
+                const int symbol = (data[i] >> shift) & 3;
+                boundary->linedata[*boundary->position] = (BYTE)(symbol << 4);
+                boundary->freqdata[*boundary->position] = (WORD)boundary->timing;
+                ++*boundary->position;
+                if (*boundary->position >= boundary->capacity) *boundary->position = 0;
+            }
+        }
+        else
+        {
+            for (int shift = 7; shift >= 0; --shift)
+            {
+                const int bit = (data[i] >> shift) & 1;
+                boundary->linedata[*boundary->position] = (BYTE)(bit << 4);
+                boundary->freqdata[*boundary->position] = (WORD)boundary->timing;
+                ++*boundary->position;
+                if (*boundary->position >= boundary->capacity) *boundary->position = 0;
+            }
+        }
+    }
+    return TRUE;
 }
 
 const char *RxRawReplayError(int result)
@@ -209,4 +250,21 @@ int RxRawReplayFile(const char *path,
 
     if (result != RX_RAW_REPLAY_OK) SetError(error, error_size, RxRawReplayError(result));
     return result;
+}
+
+int RxRawReplayFileToRs232Boundary(const char *path,
+                                   DWORD file_limit,
+                                   RX_RS232_BOUNDARY *boundary,
+                                   RX_RAW_REPLAY_STATS *stats,
+                                   char *error,
+                                   size_t error_size)
+{
+    if (!boundary || !boundary->freqdata || !boundary->linedata || !boundary->position ||
+        boundary->capacity == 0 || *boundary->position >= boundary->capacity)
+    {
+        if (stats) ZeroMemory(stats, sizeof(*stats));
+        SetError(error, error_size, RxRawReplayError(RX_RAW_REPLAY_INVALID_ARGUMENT));
+        return RX_RAW_REPLAY_INVALID_ARGUMENT;
+    }
+    return RxRawReplayFile(path, file_limit, ReplayRs232Sink, boundary, stats, error, error_size);
 }

@@ -7,6 +7,7 @@
 #include "rs232.h"
 #include "rs232_config.h"
 #include "rx_diagnostics.h"
+#include "rx_raw_log_replay.h"
 
 #define SLICER_BUFSIZE 10000
 
@@ -293,7 +294,6 @@ DWORD WINAPI RxThread(LPVOID pCl)
 int rs232_read(void) 
 {
 	DWORD	dwRead ; // , dwEvent, dwSetEvent;
-	int     bit ;
 	BYTE    byData[256] ;
 
 	//	OUTPUTDEBUGMSG((("rs232_read() \n")));
@@ -315,23 +315,16 @@ int rs232_read(void)
 		if(ClearCommError(m_ComPortHandle, &commErrors, &commStatus))
 			RxDiagnosticsOnCommStatus(commErrors, commStatus.cbInQue);
 		RxDiagnosticsOnRead(byData, dwRead, Profile.fourlevel ? TRUE : FALSE);
-		for(int i=0; i<dwRead; i++) {
-			for (int j=7; j>=0; j--)
-			{
-				if(Profile.fourlevel) {
-					j-- ;
-					bit = (byData[i] >> j) & 3;
-				}
-				else {
-					bit = (byData[i] >> j) & 1;
-				}	
-				rs232_linedata[rs232_cpstn] = bit << 4 ;
-				rs232_freqdata[rs232_cpstn++] = nTiming ;	
-				if(rs232_cpstn >= SLICER_BUFSIZE) {
-					rs232_cpstn = 0 ;
-				}
-			}
-		}
+		RX_RS232_BOUNDARY boundary = {
+			rs232_freqdata,
+			rs232_linedata,
+			&rs232_cpstn,
+			SLICER_BUFSIZE,
+			nTiming,
+			Profile.fourlevel ? TRUE : FALSE
+		};
+		if(!RxRs232FeedBytes(&boundary, byData, dwRead))
+			RxDiagnosticsOnReadError(ERROR_INVALID_DATA);
 	}
 	return(0) ;
 }

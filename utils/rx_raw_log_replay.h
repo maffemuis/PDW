@@ -8,6 +8,16 @@
 
 typedef BOOL (*RX_RAW_REPLAY_SINK)(DWORD relative_ms, const BYTE *data, DWORD length, void *context);
 
+typedef struct RX_RS232_BOUNDARY
+{
+    WORD *freqdata;
+    BYTE *linedata;
+    DWORD *position;
+    DWORD capacity;
+    double timing;
+    BOOL fourlevel;
+} RX_RS232_BOUNDARY;
+
 enum RX_RAW_REPLAY_RESULT
 {
     RX_RAW_REPLAY_OK = 0,
@@ -32,6 +42,8 @@ typedef struct RX_RAW_REPLAY_STATS
     DWORD last_relative_ms;
 } RX_RAW_REPLAY_STATS;
 
+BOOL RxRs232FeedBytes(RX_RS232_BOUNDARY *boundary, const BYTE *data, DWORD length);
+
 int RxRawReplayFile(const char *path,
                     DWORD file_limit,
                     RX_RAW_REPLAY_SINK sink,
@@ -39,5 +51,12 @@ int RxRawReplayFile(const char *path,
                     RX_RAW_REPLAY_STATS *stats,
                     char *error,
                     size_t error_size);
+
+int RxRawReplayFileToRs232Boundary(const char *path,
+                                   DWORD file_limit,
+                                   RX_RS232_BOUNDARY *boundary,
+                                   RX_RAW_REPLAY_STATS *stats,
+                                   char *error,
+                                   size_t error_size);
 
 const char *RxRawReplayError(int result);
