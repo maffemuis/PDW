@@ -71,12 +71,74 @@ jobs:
           $lines | Set-Content -Path $out -Encoding utf8
           Get-Content $out
 
-          $visibleCom = @($ports | Where-Object { $_.DeviceID -match '^COM\d+$' })
-          if ($visibleCom.Count -eq 0) {
-            Write-Host "PDW_PROBE_CLASSIFICATION=NO_COM_PORTS_VISIBLE"
+          $pnpOkCom = @($pnp | Where-Object { $_.Status -eq 'OK' -and $_.FriendlyName -match '\(COM\d+\)' })
+          if ($pnpOkCom.Count -eq 0) {
+            Write-Host "PDW_PROBE_CLASSIFICATION=NO_OK_COM_PORTS_VISIBLE"
           } else {
-            Write-Host "PDW_PROBE_CLASSIFICATION=COM_PORTS_VISIBLE"
-            Write-Host ("PDW_PROBE_COM_PORTS=" + (($visibleCom.DeviceID | Sort-Object) -join ','))
+            $names = @($pnpOkCom | ForEach-Object { if ($_.FriendlyName -match '\((COM\d+)\)') { $Matches[1] } })
+            Write-Host "PDW_PROBE_CLASSIFICATION=OK_COM_PORTS_VISIBLE"
+            Write-Host ("PDW_PROBE_COM_PORTS=" + (($names | Sort-Object -Unique) -join ','))
+          }
+
+      - name: Open COM2 at PDW settings and measure RX activity
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $out = Join-Path $env:RUNNER_TEMP "pdw-serial-hardware-probe.txt"
+          $portName = "COM2"
+          $durationSeconds = 45
+          $serial = [System.IO.Ports.SerialPort]::new($portName, 19200, [System.IO.Ports.Parity]::None, 8, [System.IO.Ports.StopBits]::One)
+          $serial.Handshake = [System.IO.Ports.Handshake]::None
+          $serial.ReadTimeout = 200
+          $serial.WriteTimeout = 200
+          $serial.DtrEnable = $false
+          $serial.RtsEnable = $false
+          $total = 0L
+          $firstTick = $null
+          $lastTick = $null
+          $start = [DateTime]::UtcNow
+          try {
+            $serial.Open()
+            if (-not $serial.IsOpen) { throw "SerialPort.Open returned without an open COM2 handle" }
+            Add-Content $out ""
+            Add-Content $out "[COM2 bounded open/read]"
+            Add-Content $out "configured=19200,8,N,1,Handshake=None,DTR=false,RTS=false"
+            Write-Host "COM2 opened successfully at 19200 8N1 no-flow"
+            $buffer = New-Object byte[] 4096
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            while ($sw.Elapsed.TotalSeconds -lt $durationSeconds) {
+              $available = $serial.BytesToRead
+              if ($available -gt 0) {
+                $count = [Math]::Min($available, $buffer.Length)
+                $read = $serial.Read($buffer, 0, $count)
+                if ($read -gt 0) {
+                  $total += $read
+                  $now = $sw.ElapsedMilliseconds
+                  if ($null -eq $firstTick) { $firstTick = $now }
+                  $lastTick = $now
+                }
+              } else {
+                Start-Sleep -Milliseconds 20
+              }
+            }
+            Add-Content $out ("open=true; duration_s={0}; rx_bytes={1}; first_rx_ms={2}; last_rx_ms={3}" -f $durationSeconds,$total,$firstTick,$lastTick)
+            Write-Host ("PDW_COM2_RX_BYTES=" + $total)
+            if ($total -gt 0) {
+              Write-Host "PDW_COM2_CLASSIFICATION=COM_OPEN_AND_RX_BYTES_PRESENT"
+            } else {
+              Write-Host "PDW_COM2_CLASSIFICATION=COM_OPEN_BUT_NO_RX_BYTES_DURING_WINDOW"
+            }
+          }
+          catch {
+            Add-Content $out ""
+            Add-Content $out "[COM2 bounded open/read]"
+            Add-Content $out ("open=false; error=" + $_.Exception.Message)
+            Write-Host ("PDW_COM2_CLASSIFICATION=COM_OPEN_FAILED: " + $_.Exception.Message)
+            throw
+          }
+          finally {
+            if ($serial.IsOpen) { $serial.Close() }
+            $serial.Dispose()
           }
 
       - name: Upload serial hardware probe
