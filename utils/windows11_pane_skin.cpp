@@ -8,6 +8,11 @@
 #include "..\\Headers\\gfx.h"
 #include "..\\Headers\\initapp.h"
 
+extern unsigned int iSelectionStartCol;
+extern unsigned int iSelectionStartRow;
+extern unsigned int iSelectionEndCol;
+extern unsigned int iSelectionEndRow;
+
 namespace {
 
 const UINT_PTR kPane1SubclassId = 0x50445741;
@@ -57,7 +62,7 @@ COLORREF MessageColor(BYTE color)
 
 HFONT MessageFont()
 {
-    int width = cxChar > 0 ? static_cast<int>(cxChar) : 8;
+    const int width = cxChar > 0 ? static_cast<int>(cxChar) : 8;
     int height = cyChar > 2 ? static_cast<int>(cyChar) - 2 : 15;
     if (height < 12) height = 12;
 
@@ -72,6 +77,10 @@ HFONT MessageFont()
 
     g_messageFontWidth = width;
     g_messageFontHeight = height;
+
+    // Consolas is deliberately used as a fixed-pitch Windows UI font here.
+    // Keeping the measured legacy cell width means column positions, hit
+    // testing, selection and scrolling stay byte-for-byte compatible.
     g_messageFont = CreateFontW(
         -height,
         width,
@@ -86,27 +95,49 @@ HFONT MessageFont()
         CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY,
         FIXED_PITCH | FF_MODERN,
-        L"Cascadia Mono");
+        L"Consolas");
 
-    if (!g_messageFont)
-    {
-        g_messageFont = CreateFontW(
-            -height,
-            width,
-            0,
-            0,
-            FW_NORMAL,
-            FALSE,
-            FALSE,
-            FALSE,
-            DEFAULT_CHARSET,
-            OUT_DEFAULT_PRECIS,
-            CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY,
-            FIXED_PITCH | FF_MODERN,
-            L"Consolas");
-    }
     return g_messageFont;
+}
+
+bool SelectionActiveForPane(PaneStruct* pane)
+{
+    return pane && select_pane == pane && select_on != 0 &&
+           (selected != 0 || selecting != 0);
+}
+
+void DrawModernSelection(HDC hdc, PaneStruct* pane, int row,
+                         int cellWidth, int cellHeight, int clientRight)
+{
+    if (!SelectionActiveForPane(pane)) return;
+
+    const unsigned int minRow = iSelectionStartRow < iSelectionEndRow
+        ? iSelectionStartRow : iSelectionEndRow;
+    const unsigned int maxRow = iSelectionStartRow > iSelectionEndRow
+        ? iSelectionStartRow : iSelectionEndRow;
+    if (static_cast<unsigned int>(row) < minRow || static_cast<unsigned int>(row) > maxRow)
+        return;
+
+    const unsigned int minCol = iSelectionStartCol < iSelectionEndCol
+        ? iSelectionStartCol : iSelectionEndCol;
+    const unsigned int maxCol = iSelectionStartCol > iSelectionEndCol
+        ? iSelectionStartCol : iSelectionEndCol;
+
+    int left = static_cast<int>(minCol) * cellWidth;
+    int right = static_cast<int>(maxCol + 1) * cellWidth;
+    if (left < 0) left = 0;
+    if (right > clientRight) right = clientRight;
+    if (right <= left) return;
+
+    RECT selection = {
+        left,
+        row * cellHeight,
+        right,
+        (row + 1) * cellHeight
+    };
+    HBRUSH brush = CreateSolidBrush(RGB(214, 232, 250));
+    FillRect(hdc, &selection, brush);
+    DeleteObject(brush);
 }
 
 void DrawPaneRows(HWND hwnd, HDC hdc, PaneStruct* pane)
@@ -145,6 +176,8 @@ void DrawPaneRows(HWND hwnd, HDC hdc, PaneStruct* pane)
             FillRect(hdc, &rowRect, alternate);
             DeleteObject(alternate);
         }
+
+        DrawModernSelection(hdc, pane, row, cellWidth, cellHeight, client.right);
 
         const int offset = lineNumber * (LINE_SIZE + 1);
         int column = firstColumn;
@@ -223,7 +256,14 @@ LRESULT CALLBACK ModernPaneSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
         case WM_MOUSEWHEEL:
         case WM_KEYDOWN:
         case WM_SIZE:
+        case WM_LBUTTONDOWN:
+        case WM_MOUSEMOVE:
+        case WM_LBUTTONUP:
+        case WM_LBUTTONDBLCLK:
         {
+            // Let the original pane procedure own all interaction semantics.
+            // We only repaint its result so the old XOR/legacy visual never
+            // becomes the persistent presentation layer.
             const LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
             InvalidateRect(hwnd, NULL, FALSE);
             return result;
