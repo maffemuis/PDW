@@ -166,7 +166,7 @@ void DrawPaneRows(HWND hwnd, HDC hdc, PaneStruct* pane)
     for (int row = 0; row < visibleRows; ++row)
     {
         const int lineNumber = pane->iVscrollPos + row;
-        if (lineNumber < 0 || static_cast<unsigned int>(lineNumber) > pane->buff_lines)
+        if (lineNumber < 0 || static_cast<unsigned int>(lineNumber) >= pane->buff_lines)
             break;
 
         RECT rowRect = { 0, row * cellHeight, client.right, (row + 1) * cellHeight };
