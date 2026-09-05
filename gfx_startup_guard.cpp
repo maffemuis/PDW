@@ -1,8 +1,8 @@
 // Startup guard for legacy GDI title-bar layout.
 //
-// The decoder/message panes stay intact, but the Windows 11 shell owns all
-// visible pane chrome. The legacy title bars therefore must not paint behind
-// or through the modern cards.
+// The decoder/message panes stay intact as functional windows, but the
+// Windows 11 shell owns all visible pane chrome and message painting. Legacy
+// title bars therefore must not paint behind or through the modern workspace.
 
 #ifndef STRICT
 #define STRICT 1
@@ -22,7 +22,11 @@ void LegacySetMessageItemPositionsWidth();
 void DrawTitleBarGfx(HWND hwnd)
 {
     if (!hwnd || cxChar == 0 || cyChar == 0) return;
-    if (pdw::IsWindows11ChromeEnabled()) return;
+    if (pdw::IsWindows11ChromeEnabled())
+    {
+        pdw::EnsureWindows11PaneStyle();
+        return;
+    }
     LegacyDrawTitleBarGfx(hwnd);
 }
 
