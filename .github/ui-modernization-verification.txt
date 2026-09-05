@@ -1,0 +1,3 @@
+PDW UI modernization exact-head verification marker.
+Current bounded step: Colors dialog Windows 11 presentation and Dutch localization.
+Runtime behavior: unchanged; this file exists only to create an Actions-visible push for exact-head validation.
