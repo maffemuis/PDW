@@ -1,0 +1,114 @@
+name: PDW UI polish once
+
+on:
+  push:
+    branches:
+      - modernization/windows11-ui
+    paths:
+      - ".github/workflows/ui-polish-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-ui:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: modernization/windows11-ui
+          fetch-depth: 1
+
+      - name: Apply bounded presentation-only fixes
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $path = "utils/windows11_ui.cpp"
+          $text = [System.IO.File]::ReadAllText($path)
+
+          function Replace-Exact([string]$old, [string]$new, [string]$label) {
+            if (-not $script:text.Contains($old)) {
+              throw "Expected UI source fragment not found: $label"
+            }
+            $script:text = $script:text.Replace($old, $new)
+          }
+
+          Replace-Exact @'
+        const bool active = dRX_Quality > 0.0;
+'@ @'
+        const bool active = !bPauseFlag && dRX_Quality > 0.0;
+'@ "card RX pause state"
+
+          Replace-Exact @'
+    const COLORREF green = RGB(20, 170, 62);
+    const COLORREF gray = RGB(154, 160, 168);
+'@ @'
+    const COLORREF green = RGB(20, 170, 62);
+    const COLORREF paused = RGB(196, 120, 0);
+    const COLORREF gray = RGB(154, 160, 168);
+'@ "status palette"
+
+          Replace-Exact @'
+    const int centerY = (g_statusRect.top + g_statusRect.bottom) / 2;
+    const int dot = ScaleForDpi(hwnd, 10);
+    HBRUSH dotBrush = CreateSolidBrush(green);
+    HPEN dotPen = CreatePen(PS_SOLID, 1, green);
+'@ @'
+    const int centerY = (g_statusRect.top + g_statusRect.bottom) / 2;
+    const int dot = ScaleForDpi(hwnd, 10);
+    const COLORREF stateColor = bPauseFlag ? paused : green;
+    HBRUSH dotBrush = CreateSolidBrush(stateColor);
+    HPEN dotPen = CreatePen(PS_SOLID, 1, stateColor);
+'@ "paused status dot"
+
+          Replace-Exact @'
+    const bool rxActive = dRX_Quality > 0.0;
+'@ @'
+    const bool rxActive = !bPauseFlag && dRX_Quality > 0.0;
+'@ "status RX pause state"
+
+          Replace-Exact @'
+LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
+                                        LPARAM lParam, UINT_PTR subclassId,
+                                        DWORD_PTR referenceData)
+{
+    if (message == WM_LBUTTONDOWN)
+'@ @'
+LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
+                                        LPARAM lParam, UINT_PTR subclassId,
+                                        DWORD_PTR referenceData)
+{
+    if (message == WM_GETMINMAXINFO)
+    {
+        const LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+        MINMAXINFO* info = reinterpret_cast<MINMAXINFO*>(lParam);
+        const int minWidth = ScaleForDpi(hwnd, 900);
+        const int minHeight = ScaleForDpi(hwnd, 600);
+        if (info->ptMinTrackSize.x < minWidth) info->ptMinTrackSize.x = minWidth;
+        if (info->ptMinTrackSize.y < minHeight) info->ptMinTrackSize.y = minHeight;
+        return result;
+    }
+
+    if (message == WM_LBUTTONDOWN)
+'@ "main-window minimum size"
+
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText($path, $text, $utf8NoBom)
+
+          git diff --check
+          git diff -- $path
+
+      - name: Commit UI-only change and remove one-shot helper
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: |
+          $ErrorActionPreference = "Stop"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/ui-polish-once.yml
+          git add utils/windows11_ui.cpp
+          git diff --cached --check
+          git commit -m "Polish paused state and minimum window size"
+          git push origin HEAD:modernization/windows11-ui
