@@ -18,6 +18,7 @@ const int kDwmCornerRound = 2;
 const int kDwmBackdropMainWindow = 2;
 
 HFONT g_dialogFont = NULL;
+HHOOK g_dialogHook = NULL;
 
 bool AppsPreferDarkMode()
 {
@@ -49,7 +50,8 @@ HFONT GetDialogFont()
 
     if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0))
     {
-        // Windows 11 supplies the correct Segoe UI family and system scaling.
+        // Windows supplies the correct Segoe UI family and current DPI-aware
+        // system metrics, so legacy dialogs no longer force an XP-era font.
         g_dialogFont = CreateFontIndirectW(&metrics.lfMessageFont);
     }
 
@@ -69,6 +71,8 @@ BOOL CALLBACK StyleDialogChild(HWND child, LPARAM fontParam)
     HFONT font = reinterpret_cast<HFONT>(fontParam);
     if (font) SendMessage(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
 
+    // Explorer theme maps buttons, edits, combo boxes, list views and scroll
+    // bars to the current Windows common-control visual style.
     SetWindowTheme(child, L"Explorer", NULL);
     return TRUE;
 }
@@ -79,6 +83,22 @@ void ApplyRoundedCorners(HWND hwnd)
     int preference = kDwmCornerRound;
     DwmSetWindowAttribute(hwnd, kDwmWindowCornerPreference,
                           &preference, sizeof(preference));
+}
+
+LRESULT CALLBACK DialogCallWndRetProc(int code, WPARAM wParam, LPARAM lParam)
+{
+    if (code >= 0 && lParam)
+    {
+        const CWPRETSTRUCT* info = reinterpret_cast<const CWPRETSTRUCT*>(lParam);
+        if (info->message == WM_INITDIALOG)
+        {
+            // WH_CALLWNDPROCRET runs after the existing dialog procedure has
+            // initialized all controls, so this does not change legacy logic.
+            pdw::ApplyWindows11DialogStyle(info->hwnd);
+        }
+    }
+
+    return CallNextHookEx(g_dialogHook, code, wParam, lParam);
 }
 
 } // namespace
@@ -100,6 +120,16 @@ void ApplyWindows11MainWindowStyle(HWND hwnd)
     DwmSetWindowAttribute(hwnd, kDwmSystemBackdropType, &backdrop, sizeof(backdrop));
 }
 
+void InstallWindows11DialogStyling()
+{
+    if (g_dialogHook) return;
+
+    // Thread-local only: PDW's own dialogs are modernized, never unrelated
+    // processes/windows. Failure is non-fatal and leaves the legacy UI intact.
+    g_dialogHook = SetWindowsHookExW(WH_CALLWNDPROCRET, DialogCallWndRetProc,
+                                    NULL, GetCurrentThreadId());
+}
+
 void ApplyWindows11DialogStyle(HWND hwnd)
 {
     if (!hwnd) return;
@@ -110,6 +140,8 @@ void ApplyWindows11DialogStyle(HWND hwnd)
     HFONT font = GetDialogFont();
     if (font) SendMessage(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     EnumChildWindows(hwnd, StyleDialogChild, reinterpret_cast<LPARAM>(font));
+
+    InvalidateRect(hwnd, NULL, TRUE);
 }
 
 void ApplyWindows11ControlStyle(HWND hwnd)
