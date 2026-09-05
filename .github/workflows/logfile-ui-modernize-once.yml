@@ -1,0 +1,26 @@
+name: PDW Logfile UI modernize once
+
+on:
+  push:
+    branches:
+      - tmp/logfile-ui-apply
+    paths:
+      - .github/workflows/logfile-ui-modernize-once.yml
+      - .github/scripts/logfile-ui-modernize-once.ps1
+
+permissions:
+  contents: write
+
+jobs:
+  patch-logfile-ui:
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/logfile-ui-apply
+          fetch-depth: 0
+
+      - name: Apply bounded Logfile presentation patch
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: .github/scripts/logfile-ui-modernize-once.ps1
