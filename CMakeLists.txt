@@ -100,6 +100,8 @@ add_executable( PDW WIN32
 # Required libraries
 target_link_libraries( PDW
         Comctl32.lib
+        Dwmapi.lib
+        UxTheme.lib
         Winmm.lib
         Ws2_32.lib
         libssl_static.lib
