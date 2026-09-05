@@ -1,0 +1,26 @@
+name: PDW Options UI modernize once
+
+on:
+  push:
+    branches:
+      - tmp/options-ui-apply
+    paths:
+      - .github/workflows/options-ui-modernize-once.yml
+      - .github/scripts/options-ui-modernize-once.ps1
+
+permissions:
+  contents: write
+
+jobs:
+  patch-options-ui:
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/options-ui-apply
+          fetch-depth: 0
+
+      - name: Apply bounded Options presentation patch
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: .github/scripts/options-ui-modernize-once.ps1
