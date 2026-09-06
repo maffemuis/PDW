@@ -28,7 +28,7 @@ bool Utf8ToWide(const std::string& input, std::wstring& output)
 {
     output.clear();
     if (input.empty()) return true;
-    if (input.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    if (input.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)()))
         return false;
     const int input_size = static_cast<int>(input.size());
     const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
