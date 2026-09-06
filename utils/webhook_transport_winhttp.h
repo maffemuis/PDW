@@ -1,6 +1,7 @@
 #ifndef PDW_UTILS_WEBHOOK_TRANSPORT_WINHTTP_H
 #define PDW_UTILS_WEBHOOK_TRANSPORT_WINHTTP_H
 
+#include <cstddef>
 #include <string>
 
 #include "../core/integration_worker.h"
@@ -29,6 +30,7 @@ public:
 
     static bool IsSafeBearerToken(const std::string& token);
     static bool IsSafeCredentialTarget(const std::wstring& target_name);
+    static bool IsRepresentableBodySize(std::size_t body_size);
 };
 
 // Reads a Windows Credential Manager GENERIC credential by target name.
