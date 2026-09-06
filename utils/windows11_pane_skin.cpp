@@ -1,4 +1,5 @@
 #include "windows11_ui.h"
+#include "ui_theme.h"
 
 #include <commctrl.h>
 #include <uxtheme.h>
@@ -18,18 +19,23 @@ namespace {
 const UINT_PTR kPane1SubclassId = 0x50445741;
 const UINT_PTR kPane2SubclassId = 0x50445742;
 
-COLORREF EnsureLightSurfaceContrast(COLORREF color)
+COLORREF EnsureSurfaceContrast(COLORREF color)
 {
     const int red = GetRValue(color);
     const int green = GetGValue(color);
     const int blue = GetBValue(color);
     const int luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+    const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
 
-    // Legacy profiles were often tuned for a black monitor background. Keep
-    // configured semantic colors where possible, but prevent near-white text
-    // from disappearing on the new light workspace.
-    if (luminance > 218)
-        return RGB(45, 52, 61);
+    // Legacy profiles may have been tuned either for the original black pane
+    // or for the modern light pane. Keep semantic colors where possible and
+    // only substitute when contrast would become unreadable.
+    if (pdw::CurrentUiTheme() == pdw::UiTheme::Dark)
+    {
+        if (luminance < 70) return palette.textSecondary;
+        return color;
+    }
+    if (luminance > 218) return palette.textSecondary;
     return color;
 }
 
@@ -37,22 +43,22 @@ COLORREF MessageColor(BYTE color)
 {
     switch (color)
     {
-        case COLOR_ADDRESS:       return EnsureLightSurfaceContrast(Profile.color_address);
-        case COLOR_TIMESTAMP:     return EnsureLightSurfaceContrast(Profile.color_timestamp);
-        case COLOR_MODETYPEBIT:   return EnsureLightSurfaceContrast(Profile.color_modetypebit);
-        case COLOR_MESSAGE:       return EnsureLightSurfaceContrast(Profile.color_message);
-        case COLOR_NUMERIC:       return EnsureLightSurfaceContrast(Profile.color_numeric);
-        case COLOR_MISC:          return EnsureLightSurfaceContrast(Profile.color_misc);
-        case COLOR_BITERRORS:     return EnsureLightSurfaceContrast(Profile.color_biterrors);
-        case COLOR_FILTERMATCH:   return EnsureLightSurfaceContrast(Profile.color_filtermatch);
-        case COLOR_INSTRUCTIONS:  return EnsureLightSurfaceContrast(Profile.color_instructions);
-        case COLOR_AC_MESSAGE_NR: return EnsureLightSurfaceContrast(Profile.color_ac_message_nr);
-        case COLOR_AC_DBI:        return EnsureLightSurfaceContrast(Profile.color_ac_dbi);
-        case COLOR_MB_SENDER:     return EnsureLightSurfaceContrast(Profile.color_mb_sender);
+        case COLOR_ADDRESS:       return EnsureSurfaceContrast(Profile.color_address);
+        case COLOR_TIMESTAMP:     return EnsureSurfaceContrast(Profile.color_timestamp);
+        case COLOR_MODETYPEBIT:   return EnsureSurfaceContrast(Profile.color_modetypebit);
+        case COLOR_MESSAGE:       return EnsureSurfaceContrast(Profile.color_message);
+        case COLOR_NUMERIC:       return EnsureSurfaceContrast(Profile.color_numeric);
+        case COLOR_MISC:          return EnsureSurfaceContrast(Profile.color_misc);
+        case COLOR_BITERRORS:     return EnsureSurfaceContrast(Profile.color_biterrors);
+        case COLOR_FILTERMATCH:   return EnsureSurfaceContrast(Profile.color_filtermatch);
+        case COLOR_INSTRUCTIONS:  return EnsureSurfaceContrast(Profile.color_instructions);
+        case COLOR_AC_MESSAGE_NR: return EnsureSurfaceContrast(Profile.color_ac_message_nr);
+        case COLOR_AC_DBI:        return EnsureSurfaceContrast(Profile.color_ac_dbi);
+        case COLOR_MB_SENDER:     return EnsureSurfaceContrast(Profile.color_mb_sender);
         default:
             if (color >= COLOR_FILTERLABEL && color <= COLOR_FILTERLABEL + 16)
-                return EnsureLightSurfaceContrast(Profile.color_filterlabel[color - COLOR_FILTERLABEL]);
-            return RGB(35, 42, 51);
+                return EnsureSurfaceContrast(Profile.color_filterlabel[color - COLOR_FILTERLABEL]);
+            return pdw::CurrentThemePalette().textPrimary;
     }
 }
 
@@ -91,7 +97,7 @@ void DrawModernSelection(HDC hdc, PaneStruct* pane, int row,
         right,
         (row + 1) * cellHeight
     };
-    HBRUSH brush = CreateSolidBrush(RGB(214, 232, 250));
+    HBRUSH brush = CreateSolidBrush(pdw::CurrentThemePalette().selectionBackground);
     FillRect(hdc, &selection, brush);
     DeleteObject(brush);
 }
@@ -101,7 +107,8 @@ void DrawPaneRows(HWND hwnd, HDC hdc, PaneStruct* pane)
     RECT client = {};
     GetClientRect(hwnd, &client);
 
-    HBRUSH base = CreateSolidBrush(RGB(247, 250, 252));
+    const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+    HBRUSH base = CreateSolidBrush(palette.paneBackground);
     FillRect(hdc, &client, base);
     DeleteObject(base);
 
@@ -130,7 +137,7 @@ void DrawPaneRows(HWND hwnd, HDC hdc, PaneStruct* pane)
         RECT rowRect = { 0, row * cellHeight, client.right, (row + 1) * cellHeight };
         if ((row & 1) != 0)
         {
-            HBRUSH alternate = CreateSolidBrush(RGB(240, 246, 250));
+            HBRUSH alternate = CreateSolidBrush(palette.paneAlternateBackground);
             FillRect(hdc, &rowRect, alternate);
             DeleteObject(alternate);
         }
@@ -174,7 +181,7 @@ void DrawPaneRows(HWND hwnd, HDC hdc, PaneStruct* pane)
             TextOutA(hdc, x, y, run, runLength);
         }
 
-        HPEN separator = CreatePen(PS_SOLID, 1, RGB(238, 242, 246));
+        HPEN separator = CreatePen(PS_SOLID, 1, palette.divider);
         HGDIOBJ oldPen = SelectObject(hdc, separator);
         MoveToEx(hdc, 0, rowRect.bottom - 1, NULL);
         LineTo(hdc, client.right, rowRect.bottom - 1);

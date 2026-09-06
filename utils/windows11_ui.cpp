@@ -1,4 +1,5 @@
 #include "windows11_ui.h"
+#include "ui_theme.h"
 
 #include <commctrl.h>
 #include <dwmapi.h>
@@ -49,6 +50,7 @@ const WPARAM kLegacyDecodeTimer = 101;
 const WPARAM kLegacySecondTimer = 103;
 const int kSettingsPopupCommand = 50001;
 const int kResumeMonitorCommand = 50002;
+const int kToggleThemeCommand = 50003;
 
 const wchar_t* kSettingsFlyoutClass = L"PDW.Windows11.SettingsFlyout";
 
@@ -100,6 +102,7 @@ const FlyoutItem g_flyoutItems[] = {
     { L"\xE8D2", L"Font", IDM_FONT },
     { L"\xE8A5", L"Data & logging", IDM_LOGFILE },
     { L"\xE715", L"SMTP / network", IDM_MAIL },
+    { L"\xE706", L"Theme", kToggleThemeCommand },
     { L"\xE946", L"About PDW", IDM_ABOUT }
 };
 
@@ -313,12 +316,13 @@ int CommandForTarget(int target)
 void DrawIconTextButton(HDC hdc, const RECT& rect, const wchar_t* icon,
                         const wchar_t* label, bool selected, bool hovered, bool pressed)
 {
-    const COLORREF accent = RGB(0, 120, 212);
-    const COLORREF accentPressed = RGB(0, 95, 184);
-    const COLORREF normalBg = RGB(246, 249, 252);
-    const COLORREF hoverBg = RGB(240, 246, 252);
-    const COLORREF fg = RGB(32, 32, 32);
-    const COLORREF selectedFg = RGB(255, 255, 255);
+    const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+    const COLORREF accent = palette.accent;
+    const COLORREF accentPressed = palette.accentPressed;
+    const COLORREF normalBg = palette.controlBackground;
+    const COLORREF hoverBg = palette.controlHover;
+    const COLORREF fg = palette.textPrimary;
+    const COLORREF selectedFg = palette.selectionText;
 
     COLORREF fill = normalBg;
     COLORREF border = normalBg;
@@ -330,7 +334,7 @@ void DrawIconTextButton(HDC hdc, const RECT& rect, const wchar_t* icon,
     else if (hovered)
     {
         fill = hoverBg;
-        border = RGB(224, 235, 246);
+        border = palette.border;
     }
     FillRoundedRect(hdc, rect, fill, border, ScaleForDpi(g_mainWindow, 18));
 
@@ -359,9 +363,10 @@ void DrawIconTextButton(HDC hdc, const RECT& rect, const wchar_t* icon,
 void DrawTopNavigation(HDC hdc, HWND hwnd, const RECT& client)
 {
     BuildShellTargets(hwnd);
-    const COLORREF shellBg = RGB(238, 244, 249);
-    const COLORREF capsuleBg = RGB(244, 248, 251);
-    const COLORREF capsuleBorder = RGB(224, 231, 239);
+    const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+    const COLORREF shellBg = palette.shellBackground;
+    const COLORREF capsuleBg = palette.controlBackground;
+    const COLORREF capsuleBorder = palette.border;
 
     RECT row = { 0, 0, client.right, CommandTop(hwnd) - ScaleForDpi(hwnd, 3) };
     HBRUSH rowBrush = CreateSolidBrush(shellBg);
@@ -392,8 +397,9 @@ void DrawTopNavigation(HDC hdc, HWND hwnd, const RECT& client)
 void DrawCommandStrip(HDC hdc, HWND hwnd, const RECT& client)
 {
     BuildShellTargets(hwnd);
-    const COLORREF rowBg = RGB(245, 249, 252);
-    const COLORREF rowBorder = RGB(218, 226, 235);
+    const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+    const COLORREF rowBg = palette.controlBackground;
+    const COLORREF rowBorder = palette.border;
     const int top = CommandTop(hwnd);
     const int height = CommandHeight(hwnd);
 
@@ -448,9 +454,10 @@ void DrawColumnHeaders(HDC hdc, HWND hwnd, const RECT& body, bool filteredPane)
 
     const int headerHeight = ColumnHeaderHeight(hwnd);
     const int y = body.top - headerHeight;
-    const COLORREF background = RGB(239, 245, 250);
-    const COLORREF foreground = RGB(45, 45, 45);
-    const COLORREF divider = RGB(225, 230, 236);
+    const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+    const COLORREF background = palette.cardHeaderBackground;
+    const COLORREF foreground = palette.textSecondary;
+    const COLORREF divider = palette.divider;
 
     RECT header = { body.left, y, body.right, body.top };
     HBRUSH brush = CreateSolidBrush(background);
@@ -498,10 +505,11 @@ void DrawColumnHeaders(HDC hdc, HWND hwnd, const RECT& body, bool filteredPane)
 void DrawCard(HDC hdc, HWND hwnd, const RECT& card, const RECT& body,
               const wchar_t* title, bool withRx)
 {
-    const COLORREF cardBg = RGB(248, 251, 253);
-    const COLORREF cardBorder = RGB(206, 217, 229);
-    const COLORREF titleBg = RGB(236, 243, 249);
-    const COLORREF titleFg = RGB(24, 39, 58);
+    const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+    const COLORREF cardBg = palette.cardBackground;
+    const COLORREF cardBorder = palette.border;
+    const COLORREF titleBg = palette.cardHeaderBackground;
+    const COLORREF titleFg = palette.textPrimary;
     const int radius = ScaleForDpi(hwnd, 10);
     const int titleHeight = CardTitleHeight(hwnd);
 
@@ -546,7 +554,7 @@ void DrawCard(HDC hdc, HWND hwnd, const RECT& card, const RECT& body,
             meterRight,
             cy + meterHeight / 2
         };
-        FillRoundedRect(hdc, meter, RGB(219, 228, 236), RGB(203, 214, 224),
+        FillRoundedRect(hdc, meter, palette.controlBackground, palette.border,
                         ScaleForDpi(hwnd, 8));
 
         const int innerPad = ScaleForDpi(hwnd, 2);
@@ -563,8 +571,8 @@ void DrawCard(HDC hdc, HWND hwnd, const RECT& card, const RECT& body,
             RECT live = inner;
             live.right = live.left + liveWidth;
             const COLORREF signalColor = signal >= 15
-                ? RGB(20, 170, 62)
-                : (signal >= 8 ? RGB(0, 120, 212) : RGB(86, 145, 198));
+                ? palette.signalHigh
+                : (signal >= 8 ? palette.signalMid : palette.signalLow);
             FillRoundedRect(hdc, live, signalColor, signalColor,
                             ScaleForDpi(hwnd, 6));
         }
@@ -572,7 +580,7 @@ void DrawCard(HDC hdc, HWND hwnd, const RECT& card, const RECT& body,
         // A small marker makes low-level/noise movement visible even when only
         // one or two of the old signal steps are active.
         const int markerX = inner.left + (innerWidth * signal) / 20;
-        HPEN markerPen = CreatePen(PS_SOLID, ScaleForDpi(hwnd, 2), RGB(28, 45, 62));
+        HPEN markerPen = CreatePen(PS_SOLID, ScaleForDpi(hwnd, 2), palette.textSecondary);
         HGDIOBJ oldPen = SelectObject(hdc, markerPen);
         MoveToEx(hdc, markerX, meter.top - ScaleForDpi(hwnd, 2), NULL);
         LineTo(hdc, markerX, meter.bottom + ScaleForDpi(hwnd, 2));
@@ -586,7 +594,7 @@ void DrawCard(HDC hdc, HWND hwnd, const RECT& card, const RECT& body,
             lstrcpyW(qualityText, L"--.-%");
 
         SetTextColor(hdc, quality > 0.0 && quality < 90.0
-                     ? RGB(145, 86, 0) : titleFg);
+                     ? palette.warning : titleFg);
         oldFont = SelectObject(hdc, GetHeaderFont());
         RECT rxText = {
             meter.right + ScaleForDpi(hwnd, 8), titleRect.top,
@@ -612,12 +620,13 @@ const wchar_t* CurrentModeLabel()
 
 void DrawStatusBar(HDC hdc, HWND hwnd)
 {
-    const COLORREF bg = RGB(239, 245, 250);
-    const COLORREF line = RGB(216, 224, 233);
-    const COLORREF fg = RGB(42, 51, 61);
-    const COLORREF green = RGB(20, 170, 62);
-    const COLORREF paused = RGB(196, 120, 0);
-    const COLORREF gray = RGB(154, 160, 168);
+    const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+    const COLORREF bg = palette.shellBackground;
+    const COLORREF line = palette.divider;
+    const COLORREF fg = palette.textSecondary;
+    const COLORREF green = palette.success;
+    const COLORREF paused = palette.warning;
+    const COLORREF gray = palette.textMuted;
 
     HBRUSH brush = CreateSolidBrush(bg);
     FillRect(hdc, &g_statusRect, brush);
@@ -765,7 +774,7 @@ void DrawModernWorkspace(HWND hwnd)
     HGDIOBJ oldBitmap = (buffer && bitmap) ? SelectObject(buffer, bitmap) : NULL;
     HDC hdc = (buffer && bitmap) ? buffer : target;
 
-    const COLORREF workspace = RGB(231, 238, 245);
+    const COLORREF workspace = pdw::CurrentThemePalette().workspaceBackground;
     HBRUSH background = CreateSolidBrush(workspace);
     FillRect(hdc, &client, background);
     DeleteObject(background);
@@ -789,6 +798,28 @@ void DrawModernWorkspace(HWND hwnd)
     }
 
     ReleaseDC(hwnd, target);
+}
+
+void ApplyMainDwmTheme(HWND hwnd)
+{
+    if (!hwnd) return;
+    const BOOL dark = pdw::CurrentUiTheme() == pdw::UiTheme::Dark ? TRUE : FALSE;
+    DwmSetWindowAttribute(hwnd, kDwmUseImmersiveDarkMode, &dark, sizeof(dark));
+}
+
+bool TogglePersistedUiTheme(HWND hwnd)
+{
+    const pdw::UiTheme next = pdw::CurrentUiTheme() == pdw::UiTheme::Dark
+        ? pdw::UiTheme::Light
+        : pdw::UiTheme::Dark;
+    if (!pdw::SaveUiThemeSetting(next, szShortAppName, szIniPathName))
+        return false;
+
+    ApplyMainDwmTheme(hwnd);
+    if (Pane1.hWnd) InvalidateRect(Pane1.hWnd, NULL, TRUE);
+    if (Pane2.hWnd) InvalidateRect(Pane2.hWnd, NULL, TRUE);
+    DrawModernWorkspace(hwnd);
+    return true;
 }
 
 void CloseSettingsFlyout()
@@ -839,7 +870,9 @@ LRESULT CALLBACK SettingsFlyoutProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
                 const int command = g_flyoutItems[index].command;
                 HWND owner = GetWindow(hwnd, GW_OWNER);
                 DestroyWindow(hwnd);
-                if (owner && command)
+                if (owner && command == kToggleThemeCommand)
+                    TogglePersistedUiTheme(owner);
+                else if (owner && command)
                     PostMessage(owner, WM_COMMAND, MAKEWPARAM(command, 0), 0);
             }
             return 0;
@@ -851,7 +884,8 @@ LRESULT CALLBACK SettingsFlyoutProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
             HDC hdc = BeginPaint(hwnd, &ps);
             RECT client = {};
             GetClientRect(hwnd, &client);
-            HBRUSH bg = CreateSolidBrush(RGB(255, 255, 255));
+            const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+            HBRUSH bg = CreateSolidBrush(palette.cardBackground);
             FillRect(hdc, &client, bg);
             DeleteObject(bg);
 
@@ -863,11 +897,11 @@ LRESULT CALLBACK SettingsFlyoutProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
                     client.right - ScaleForDpi(hwnd, 8), topPadding + (i + 1) * rowHeight
                 };
                 if (i == g_flyoutHover)
-                    FillRoundedRect(hdc, row, RGB(239, 246, 252), RGB(239, 246, 252),
+                    FillRoundedRect(hdc, row, palette.controlHover, palette.controlHover,
                                     ScaleForDpi(hwnd, 8));
 
                 SetBkMode(hdc, TRANSPARENT);
-                SetTextColor(hdc, RGB(0, 120, 212));
+                SetTextColor(hdc, palette.accent);
                 HGDIOBJ oldFont = SelectObject(hdc, GetIconFont());
                 RECT iconRect = row;
                 iconRect.left += ScaleForDpi(hwnd, 10);
@@ -876,11 +910,15 @@ LRESULT CALLBACK SettingsFlyoutProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
                           DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
                 SelectObject(hdc, oldFont);
 
-                SetTextColor(hdc, RGB(32, 32, 32));
+                SetTextColor(hdc, palette.textPrimary);
                 oldFont = SelectObject(hdc, GetDialogFont());
                 RECT text = row;
                 text.left += ScaleForDpi(hwnd, 46);
-                DrawTextW(hdc, g_flyoutItems[i].label, -1, &text,
+                const wchar_t* label = g_flyoutItems[i].label;
+                if (g_flyoutItems[i].command == kToggleThemeCommand)
+                    label = pdw::CurrentUiTheme() == pdw::UiTheme::Dark
+                        ? L"Theme: Dark" : L"Theme: Light";
+                DrawTextW(hdc, label, -1, &text,
                           DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
                 SelectObject(hdc, oldFont);
             }
@@ -4657,8 +4695,8 @@ void ApplyWindows11MainWindowStyle(HWND hwnd)
     if (!ghMenu) ghMenu = GetMenu(hwnd);
     ApplyRoundedCorners(hwnd);
 
-    const BOOL dark = FALSE;
-    DwmSetWindowAttribute(hwnd, kDwmUseImmersiveDarkMode, &dark, sizeof(dark));
+    LoadUiThemeSetting(szShortAppName, szIniPathName);
+    ApplyMainDwmTheme(hwnd);
     int backdrop = kDwmBackdropMainWindow;
     DwmSetWindowAttribute(hwnd, kDwmSystemBackdropType, &backdrop, sizeof(backdrop));
 
