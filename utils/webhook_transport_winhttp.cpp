@@ -4,6 +4,7 @@
 #include <wincred.h>
 #include <winhttp.h>
 
+#include <limits>
 #include <vector>
 
 namespace pdw
@@ -27,13 +28,16 @@ bool Utf8ToWide(const std::string& input, std::wstring& output)
 {
     output.clear();
     if (input.empty()) return true;
+    if (input.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+        return false;
+    const int input_size = static_cast<int>(input.size());
     const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
-                                          input.data(), static_cast<int>(input.size()),
+                                          input.data(), input_size,
                                           NULL, 0);
     if (count <= 0) return false;
     output.resize(static_cast<std::size_t>(count));
     return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
-                               input.data(), static_cast<int>(input.size()),
+                               input.data(), input_size,
                                &output[0], count) == count;
 }
 }
@@ -69,10 +73,16 @@ bool WinHttpWebhookTransport::IsSafeCredentialTarget(const std::wstring& target_
     return true;
 }
 
+bool WinHttpWebhookTransport::IsRepresentableBodySize(std::size_t body_size)
+{
+    return body_size <= static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
+}
+
 bool WinHttpWebhookTransport::PostJson(const WebhookDeliveryRequest& request)
 {
     if (!AsyncIntegrationWorker::IsSafeHttpsEndpoint(request.endpoint_https)) return false;
     if (!IsSafeBearerToken(request.bearer_token)) return false;
+    if (!IsRepresentableBodySize(request.json_body.size())) return false;
     if (request.timeout_ms == 0 || request.timeout_ms > 120000UL) return false;
 
     std::wstring endpoint;
