@@ -152,6 +152,15 @@ int main()
         pdw::AsyncIntegrationWorker::CredentialProvider());
     assert(!excessive_timeout_worker.Start());
 
+    FakeTransport invalid_backoff_transport;
+    pdw::IntegrationWorkerOptions invalid_backoff_options = options;
+    invalid_backoff_options.initial_backoff_ms = 3;
+    invalid_backoff_options.max_backoff_ms = 2;
+    pdw::AsyncIntegrationWorker invalid_backoff_worker(
+        invalid_backoff_transport, invalid_backoff_options, "https://example.test/hook",
+        pdw::AsyncIntegrationWorker::CredentialProvider());
+    assert(!invalid_backoff_worker.Start());
+
     FakeTransport invalid_transport;
     pdw::AsyncIntegrationWorker invalid_worker(
         invalid_transport, options, "http://example.test/hook",
