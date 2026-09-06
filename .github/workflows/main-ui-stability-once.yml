@@ -22,7 +22,7 @@ jobs:
 
       - name: Apply bounded UI patch
         shell: cmd
-        run: python .github\scripts\apply_main_ui_stability.py
+        run: python .github\scripts\run_main_ui_stability.py
 
       - name: Commit source patch and remove helpers
         shell: cmd
@@ -30,6 +30,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add utils/windows11_ui.cpp utils/windows11_pane_skin.cpp sigind.cpp PDW.cpp Rsrc.nl.finish.rc
-          git rm .github/scripts/apply_main_ui_stability.ps1 .github/scripts/apply_main_ui_stability.py .github/workflows/main-ui-stability-once.yml
+          git rm .github/scripts/apply_main_ui_stability.ps1 .github/scripts/apply_main_ui_stability.py .github/scripts/run_main_ui_stability.py .github/workflows/main-ui-stability-once.yml
           git commit -m "Stabilize UI and restore live RX meter"
           git push origin HEAD:modernization/windows11-ui
