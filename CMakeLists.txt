@@ -64,6 +64,7 @@ set( PDW_SRCS
         Rsrc.nl.remaining.rc
         Rsrc.nl.finish.rc
         PDW.cpp
+        startup_defaults.cpp
         Pocsag.cpp
         acars.cpp
         decode.cpp
@@ -104,6 +105,13 @@ set_source_files_properties( sound_in.cpp PROPERTIES
 # before INI loading, window-class registration or other GUI startup work.
 set_source_files_properties( Initapp.cpp PROPERTIES
         COMPILE_DEFINITIONS "InitApplication=LegacyInitApplication"
+)
+
+# Keep the large legacy profile loader intact and expose it under an internal
+# name. startup_defaults.cpp handles only clean-install bootstrap/defaults and
+# then delegates to the original implementation.
+set_source_files_properties( PDW.cpp PROPERTIES
+        COMPILE_DEFINITIONS "GetPrivateProfileSettings=LegacyGetPrivateProfileSettings"
 )
 
 # Create executable
