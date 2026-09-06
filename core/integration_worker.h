@@ -33,6 +33,7 @@ struct IntegrationWorkerOptions
 
     std::size_t queue_capacity;
     std::size_t max_payload_bytes;
+    std::size_t max_outstanding_bytes;
     unsigned int max_attempts;
     unsigned long request_timeout_ms;
     unsigned long initial_backoff_ms;
@@ -58,6 +59,7 @@ public:
     bool TryEnqueue(const std::string& json_body);
 
     std::size_t QueueSize() const;
+    std::size_t OutstandingBytes() const;
     std::size_t DroppedCount() const;
     std::size_t DeliveredCount() const;
     std::size_t FailedCount() const;
@@ -82,6 +84,7 @@ private:
     std::thread thread_;
     bool running_;
     bool stopping_;
+    std::size_t outstanding_bytes_;
     std::size_t dropped_;
     std::size_t delivered_;
     std::size_t failed_;
