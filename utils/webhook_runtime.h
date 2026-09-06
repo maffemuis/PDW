@@ -28,6 +28,7 @@ public:
 
     bool IsEnabled() const;
     std::size_t QueueSize() const;
+    std::size_t OutstandingBytes() const;
     std::size_t DroppedCount() const;
     std::size_t DeliveredCount() const;
     std::size_t FailedCount() const;
