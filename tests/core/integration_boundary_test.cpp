@@ -136,6 +136,22 @@ int main()
     assert(missing_credential_transport.calls == 0);
     assert(missing_credential_worker.DeliveredCount() == 0);
 
+    FakeTransport zero_timeout_transport;
+    pdw::IntegrationWorkerOptions zero_timeout_options = options;
+    zero_timeout_options.request_timeout_ms = 0;
+    pdw::AsyncIntegrationWorker zero_timeout_worker(
+        zero_timeout_transport, zero_timeout_options, "https://example.test/hook",
+        pdw::AsyncIntegrationWorker::CredentialProvider());
+    assert(!zero_timeout_worker.Start());
+
+    FakeTransport excessive_timeout_transport;
+    pdw::IntegrationWorkerOptions excessive_timeout_options = options;
+    excessive_timeout_options.request_timeout_ms = 120001UL;
+    pdw::AsyncIntegrationWorker excessive_timeout_worker(
+        excessive_timeout_transport, excessive_timeout_options, "https://example.test/hook",
+        pdw::AsyncIntegrationWorker::CredentialProvider());
+    assert(!excessive_timeout_worker.Start());
+
     FakeTransport invalid_transport;
     pdw::AsyncIntegrationWorker invalid_worker(
         invalid_transport, options, "http://example.test/hook",
