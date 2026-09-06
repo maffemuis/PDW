@@ -71,6 +71,16 @@ void AsyncIntegrationWorker::Stop()
         std::lock_guard<std::mutex> lock(mutex_);
         if (!running_) return;
         stopping_ = true;
+
+        // Shutdown is fail-open: do not drain an arbitrary webhook backlog.
+        // Keep only a delivery already in flight; queued work is discarded so
+        // Stop() latency does not grow with queue depth or retry policy.
+        while (!queue_.empty())
+        {
+            outstanding_bytes_ -= queue_.front().size();
+            queue_.pop_front();
+            ++dropped_;
+        }
     }
     wake_.notify_all();
     if (thread_.joinable()) thread_.join();
