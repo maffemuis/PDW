@@ -44,6 +44,16 @@ bool WaitForDelivered(pdw::AsyncIntegrationWorker& worker, std::size_t count)
     }
     return false;
 }
+
+bool WaitForFailed(pdw::AsyncIntegrationWorker& worker, std::size_t count)
+{
+    for (int i = 0; i < 100; ++i)
+    {
+        if (worker.FailedCount() >= count) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return false;
+}
 }
 
 int main()
@@ -107,6 +117,24 @@ int main()
     assert(transport.requests[0].bearer_token == "secret-token");
     assert(transport.requests[0].timeout_ms == 3210);
     assert(worker.FailedCount() == 0);
+
+    FakeTransport missing_credential_transport;
+    int missing_credential_reads = 0;
+    pdw::AsyncIntegrationWorker missing_credential_worker(
+        missing_credential_transport,
+        options,
+        "https://example.test/hook",
+        [&missing_credential_reads]() {
+            ++missing_credential_reads;
+            return std::string();
+        });
+    assert(missing_credential_worker.Start());
+    assert(missing_credential_worker.TryEnqueue(json));
+    assert(WaitForFailed(missing_credential_worker, 1));
+    missing_credential_worker.Stop();
+    assert(missing_credential_reads == 1);
+    assert(missing_credential_transport.calls == 0);
+    assert(missing_credential_worker.DeliveredCount() == 0);
 
     FakeTransport invalid_transport;
     pdw::AsyncIntegrationWorker invalid_worker(
