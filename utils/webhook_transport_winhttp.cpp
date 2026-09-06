@@ -38,9 +38,35 @@ bool Utf8ToWide(const std::string& input, std::wstring& output)
 }
 }
 
+WebhookRuntimeConfig::WebhookRuntimeConfig()
+    : enabled(false),
+      request_timeout_ms(5000)
+{
+}
+
+bool WebhookRuntimeConfig::IsValid() const
+{
+    if (!enabled) return true;
+    if (!AsyncIntegrationWorker::IsSafeHttpsEndpoint(endpoint_https)) return false;
+    if (!WinHttpWebhookTransport::IsSafeCredentialTarget(credential_target)) return false;
+    if (request_timeout_ms == 0 || request_timeout_ms > 120000UL) return false;
+    return true;
+}
+
 bool WinHttpWebhookTransport::IsSafeBearerToken(const std::string& token)
 {
     return token.find_first_of("\r\n") == std::string::npos;
+}
+
+bool WinHttpWebhookTransport::IsSafeCredentialTarget(const std::wstring& target_name)
+{
+    if (target_name.empty() || target_name.size() > CRED_MAX_GENERIC_TARGET_NAME_LENGTH)
+        return false;
+    for (std::wstring::const_iterator it = target_name.begin(); it != target_name.end(); ++it)
+    {
+        if (*it < 0x20 || *it == 0x7f) return false;
+    }
+    return true;
 }
 
 bool WinHttpWebhookTransport::PostJson(const WebhookDeliveryRequest& request)
@@ -113,7 +139,7 @@ bool WinHttpWebhookTransport::PostJson(const WebhookDeliveryRequest& request)
 
 std::string ReadWindowsGenericCredentialUtf8(const std::wstring& target_name)
 {
-    if (target_name.empty()) return std::string();
+    if (!WinHttpWebhookTransport::IsSafeCredentialTarget(target_name)) return std::string();
 
     PCREDENTIALW credential = NULL;
     if (!CredReadW(target_name.c_str(), CRED_TYPE_GENERIC, 0, &credential))
