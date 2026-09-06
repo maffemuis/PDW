@@ -67,6 +67,11 @@ std::size_t WebhookRuntime::QueueSize() const
     return worker_ ? worker_->QueueSize() : 0;
 }
 
+std::size_t WebhookRuntime::OutstandingBytes() const
+{
+    return worker_ ? worker_->OutstandingBytes() : 0;
+}
+
 std::size_t WebhookRuntime::DroppedCount() const
 {
     return worker_ ? worker_->DroppedCount() : 0;
