@@ -73,16 +73,17 @@ bool WinHttpWebhookTransport::IsSafeCredentialTarget(const std::wstring& target_
     return true;
 }
 
-bool WinHttpWebhookTransport::IsRepresentableBodySize(std::size_t body_size)
+bool WinHttpWebhookTransport::IsSafeBodySize(std::size_t body_size)
 {
-    return body_size <= static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
+    const std::size_t kMaxDirectWebhookBodyBytes = 8u * 1024u * 1024u;
+    return body_size <= kMaxDirectWebhookBodyBytes;
 }
 
 bool WinHttpWebhookTransport::PostJson(const WebhookDeliveryRequest& request)
 {
     if (!AsyncIntegrationWorker::IsSafeHttpsEndpoint(request.endpoint_https)) return false;
     if (!IsSafeBearerToken(request.bearer_token)) return false;
-    if (!IsRepresentableBodySize(request.json_body.size())) return false;
+    if (!IsSafeBodySize(request.json_body.size())) return false;
     if (request.timeout_ms == 0 || request.timeout_ms > 120000UL) return false;
 
     std::wstring endpoint;
