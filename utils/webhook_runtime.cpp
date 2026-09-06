@@ -3,8 +3,10 @@
 namespace pdw
 {
 
-WebhookRuntime::WebhookRuntime(IWebhookTransport& transport)
-    : transport_(transport)
+WebhookRuntime::WebhookRuntime(IWebhookTransport& transport,
+                               const CredentialProvider& credential_provider)
+    : transport_(transport),
+      credential_provider_(credential_provider)
 {
 }
 
@@ -13,12 +15,32 @@ WebhookRuntime::~WebhookRuntime()
     Stop();
 }
 
+std::shared_ptr<AsyncIntegrationWorker> WebhookRuntime::SnapshotWorker() const
+{
+    std::lock_guard<std::mutex> lock(worker_mutex_);
+    return worker_;
+}
+
+std::shared_ptr<AsyncIntegrationWorker> WebhookRuntime::DetachWorker()
+{
+    std::lock_guard<std::mutex> lock(worker_mutex_);
+    std::shared_ptr<AsyncIntegrationWorker> previous = worker_;
+    worker_.reset();
+    return previous;
+}
+
 bool WebhookRuntime::ApplyConfig(const WebhookRuntimeConfig& config,
                                  const IntegrationWorkerOptions& options)
 {
-    Stop();
-    config_ = config;
+    std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
 
+    // Remove the old worker from decoder visibility before Stop() can wait on
+    // an in-flight request. A decoder caller can then only see null or hold its
+    // own short-lived shared_ptr snapshot of the old worker.
+    std::shared_ptr<AsyncIntegrationWorker> previous = DetachWorker();
+    if (previous) previous->Stop();
+
+    config_ = config;
     if (!config_.IsValid()) return false;
     if (!config_.enabled) return true;
 
@@ -27,64 +49,81 @@ bool WebhookRuntime::ApplyConfig(const WebhookRuntimeConfig& config,
     if (effective.queue_capacity == 0 || effective.max_attempts == 0)
         return false;
 
-    const std::wstring credential_target = config_.credential_target;
-    AsyncIntegrationWorker::CredentialProvider credentials =
-        [credential_target]() {
+    CredentialProvider credentials = credential_provider_;
+    if (!credentials)
+    {
+        const std::wstring credential_target = config_.credential_target;
+        credentials = [credential_target]() {
             return ReadWindowsGenericCredentialUtf8(credential_target);
         };
+    }
 
-    worker_.reset(new AsyncIntegrationWorker(
-        transport_, effective, config_.endpoint_https, credentials));
-    if (!worker_->Start())
+    std::shared_ptr<AsyncIntegrationWorker> next;
+    try
     {
-        worker_.reset();
+        next.reset(new AsyncIntegrationWorker(
+            transport_, effective, config_.endpoint_https, credentials));
+        if (!next->Start()) return false;
+    }
+    catch (...)
+    {
+        // Configuration failure must never escape into the host application.
         return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(worker_mutex_);
+        worker_ = next;
     }
     return true;
 }
 
 void WebhookRuntime::Stop()
 {
-    if (worker_)
-    {
-        worker_->Stop();
-        worker_.reset();
-    }
+    std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
+    std::shared_ptr<AsyncIntegrationWorker> previous = DetachWorker();
+    if (previous) previous->Stop();
 }
 
 bool WebhookRuntime::TryEnqueue(const std::string& json_body)
 {
-    return worker_ ? worker_->TryEnqueue(json_body) : false;
+    const std::shared_ptr<AsyncIntegrationWorker> worker = SnapshotWorker();
+    return worker ? worker->TryEnqueue(json_body) : false;
 }
 
 bool WebhookRuntime::IsEnabled() const
 {
-    return worker_.get() != NULL;
+    return static_cast<bool>(SnapshotWorker());
 }
 
 std::size_t WebhookRuntime::QueueSize() const
 {
-    return worker_ ? worker_->QueueSize() : 0;
+    const std::shared_ptr<AsyncIntegrationWorker> worker = SnapshotWorker();
+    return worker ? worker->QueueSize() : 0;
 }
 
 std::size_t WebhookRuntime::OutstandingBytes() const
 {
-    return worker_ ? worker_->OutstandingBytes() : 0;
+    const std::shared_ptr<AsyncIntegrationWorker> worker = SnapshotWorker();
+    return worker ? worker->OutstandingBytes() : 0;
 }
 
 std::size_t WebhookRuntime::DroppedCount() const
 {
-    return worker_ ? worker_->DroppedCount() : 0;
+    const std::shared_ptr<AsyncIntegrationWorker> worker = SnapshotWorker();
+    return worker ? worker->DroppedCount() : 0;
 }
 
 std::size_t WebhookRuntime::DeliveredCount() const
 {
-    return worker_ ? worker_->DeliveredCount() : 0;
+    const std::shared_ptr<AsyncIntegrationWorker> worker = SnapshotWorker();
+    return worker ? worker->DeliveredCount() : 0;
 }
 
 std::size_t WebhookRuntime::FailedCount() const
 {
-    return worker_ ? worker_->FailedCount() : 0;
+    const std::shared_ptr<AsyncIntegrationWorker> worker = SnapshotWorker();
+    return worker ? worker->FailedCount() : 0;
 }
 
 } // namespace pdw

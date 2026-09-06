@@ -217,6 +217,25 @@ if( BUILD_TESTING )
       COMMAND pdw_webhook_runtime_test
   )
 
+  add_executable( pdw_webhook_runtime_reconfigure_test
+      tests/core/webhook_runtime_reconfigure_test.cpp
+      core/integration_worker.cpp
+      utils/webhook_runtime.cpp
+      utils/webhook_transport_winhttp.cpp
+  )
+  target_include_directories( pdw_webhook_runtime_reconfigure_test PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/core
+      ${CMAKE_CURRENT_SOURCE_DIR}/utils
+  )
+  target_link_libraries( pdw_webhook_runtime_reconfigure_test
+      Winhttp.lib
+      Advapi32.lib
+  )
+  add_test(
+      NAME pdw_webhook_runtime_reconfigure
+      COMMAND pdw_webhook_runtime_reconfigure_test
+  )
+
   add_executable( pdw_webhook_integration_wiring_test
       tests/core/webhook_integration_wiring_test.cpp
       core/decoded_message.cpp

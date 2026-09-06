@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include "webhook_transport_winhttp.h"
@@ -16,7 +17,11 @@ namespace pdw
 class WebhookRuntime
 {
 public:
-    explicit WebhookRuntime(IWebhookTransport& transport);
+    typedef AsyncIntegrationWorker::CredentialProvider CredentialProvider;
+
+    explicit WebhookRuntime(
+        IWebhookTransport& transport,
+        const CredentialProvider& credential_provider = CredentialProvider());
     ~WebhookRuntime();
 
     bool ApplyConfig(const WebhookRuntimeConfig& config,
@@ -37,9 +42,19 @@ private:
     WebhookRuntime(const WebhookRuntime&);
     WebhookRuntime& operator=(const WebhookRuntime&);
 
+    std::shared_ptr<AsyncIntegrationWorker> SnapshotWorker() const;
+    std::shared_ptr<AsyncIntegrationWorker> DetachWorker();
+
     IWebhookTransport& transport_;
+    CredentialProvider credential_provider_;
     WebhookRuntimeConfig config_;
-    std::unique_ptr<AsyncIntegrationWorker> worker_;
+
+    // Lifecycle work may wait for an in-flight HTTP request, but decoder-facing
+    // methods never acquire this mutex. worker_mutex_ is held only long enough
+    // to copy/swap a shared_ptr.
+    std::mutex lifecycle_mutex_;
+    mutable std::mutex worker_mutex_;
+    std::shared_ptr<AsyncIntegrationWorker> worker_;
 };
 
 } // namespace pdw

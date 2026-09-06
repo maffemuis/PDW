@@ -59,7 +59,9 @@ private:
 int main()
 {
     FakeTransport transport;
-    pdw::WebhookRuntime runtime(transport);
+    pdw::WebhookRuntime runtime(
+        transport,
+        []() { return std::string("runtime-test-token"); });
 
     pdw::WebhookRuntimeConfig disabled;
     assert(runtime.ApplyConfig(disabled));
@@ -78,7 +80,7 @@ int main()
     pdw::WebhookRuntimeConfig valid;
     valid.enabled = true;
     valid.endpoint_https = "https://example.test/pdw";
-    valid.credential_target = L"PDW/Webhook/test-runtime-missing-credential";
+    valid.credential_target = L"PDW/Webhook/test-runtime";
     valid.request_timeout_ms = 3210;
 
     pdw::IntegrationWorkerOptions options;
