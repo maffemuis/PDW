@@ -48,17 +48,17 @@ const ThemePalette kDark = {
 };
 
 const ThemePalette kLight = {
-    RGB(238, 243, 248), // windowBackground
-    RGB(231, 238, 245), // workspaceBackground
-    RGB(238, 244, 249), // shellBackground
-    RGB(246, 249, 252), // controlBackground
-    RGB(235, 243, 250), // controlHover
-    RGB(248, 251, 253), // cardBackground
-    RGB(236, 243, 249), // cardHeaderBackground
-    RGB(247, 250, 252), // paneBackground
-    RGB(240, 246, 250), // paneAlternateBackground
-    RGB(203, 214, 224), // border
-    RGB(216, 224, 233), // divider
+    RGB(232, 238, 244), // windowBackground
+    RGB(224, 232, 240), // workspaceBackground
+    RGB(232, 239, 245), // shellBackground
+    RGB(239, 244, 248), // controlBackground
+    RGB(228, 237, 245), // controlHover
+    RGB(241, 246, 249), // cardBackground
+    RGB(230, 238, 244), // cardHeaderBackground
+    RGB(240, 245, 248), // paneBackground
+    RGB(233, 240, 245), // paneAlternateBackground
+    RGB(195, 207, 218), // border
+    RGB(207, 217, 226), // divider
     RGB(24, 39, 58),    // textPrimary
     RGB(72, 84, 97),    // textSecondary
     RGB(104, 116, 128), // textMuted

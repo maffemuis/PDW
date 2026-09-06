@@ -669,7 +669,7 @@ void DrawStatusBar(HDC hdc, HWND hwnd)
     DrawTextW(hdc, CurrentModeLabel(), -1, &modeRect,
               DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
-    const bool rxActive = !bPauseFlag && dRX_Quality > 0.0;
+    const bool rxActive = !bPauseFlag && si_index > 0;
     const COLORREF rxColor = rxActive ? green : gray;
     HBRUSH rxBrush = CreateSolidBrush(rxColor);
     HPEN rxPen = CreatePen(PS_SOLID, 1, rxColor);
@@ -684,7 +684,7 @@ void DrawStatusBar(HDC hdc, HWND hwnd)
 
     RECT rxText = { rxX + ScaleForDpi(hwnd, 16), g_statusRect.top,
                     g_statusRect.right - ScaleForDpi(hwnd, 12), g_statusRect.bottom };
-    DrawTextW(hdc, L"RX-Q", -1, &rxText,
+    DrawTextW(hdc, L"RX", -1, &rxText,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
     SelectObject(hdc, oldFont);
 }
@@ -757,17 +757,20 @@ void LayoutModernWorkspace(HWND hwnd)
     if (GetWindowRect(Pane1.hWnd, &paneRect)) pane1Top = paneRect.top;
 }
 
-void DrawModernWorkspace(HWND hwnd)
+void PaintModernWorkspace(HWND hwnd, HDC target, const RECT* paintRect)
 {
+    if (!target) return;
+
     RECT client = {};
     GetClientRect(hwnd, &client);
     const int width = client.right - client.left;
     const int height = client.bottom - client.top;
     if (width <= 0 || height <= 0) return;
 
-    HDC target = GetDCEx(hwnd, NULL, DCX_CACHE | DCX_CLIPCHILDREN);
-    if (!target) target = GetDC(hwnd);
-    if (!target) return;
+    const int savedTarget = SaveDC(target);
+    if (paintRect)
+        IntersectClipRect(target, paintRect->left, paintRect->top,
+                          paintRect->right, paintRect->bottom);
 
     HDC buffer = CreateCompatibleDC(target);
     HBITMAP bitmap = buffer ? CreateCompatibleBitmap(target, width, height) : NULL;
@@ -787,7 +790,17 @@ void DrawModernWorkspace(HWND hwnd)
 
     if (buffer && bitmap)
     {
-        BitBlt(target, 0, 0, width, height, buffer, 0, 0, SRCCOPY);
+        RECT copy = client;
+        if (paintRect)
+        {
+            RECT clipped = {};
+            if (IntersectRect(&clipped, &client, paintRect)) copy = clipped;
+            else SetRectEmpty(&copy);
+        }
+        if (!IsRectEmpty(&copy))
+            BitBlt(target, copy.left, copy.top,
+                   copy.right - copy.left, copy.bottom - copy.top,
+                   buffer, copy.left, copy.top, SRCCOPY);
         SelectObject(buffer, oldBitmap);
         DeleteObject(bitmap);
         DeleteDC(buffer);
@@ -797,7 +810,35 @@ void DrawModernWorkspace(HWND hwnd)
         DeleteDC(buffer);
     }
 
-    ReleaseDC(hwnd, target);
+    RestoreDC(target, savedTarget);
+}
+
+void DrawModernWorkspace(HWND hwnd)
+{
+    if (hwnd) InvalidateRect(hwnd, NULL, FALSE);
+}
+
+void InvalidateModernShell(HWND hwnd)
+{
+    if (!hwnd) return;
+    RECT client = {};
+    GetClientRect(hwnd, &client);
+    RECT shell = { 0, 0, client.right, ShellHeight(hwnd) };
+    InvalidateRect(hwnd, &shell, FALSE);
+}
+
+void InvalidateModernRx(HWND hwnd)
+{
+    if (!hwnd || IsRectEmpty(&g_pane1Card)) return;
+    RECT rx = g_pane1Card;
+    rx.bottom = min(rx.bottom, rx.top + CardTitleHeight(hwnd) + 1);
+    InvalidateRect(hwnd, &rx, FALSE);
+}
+
+void InvalidateModernStatus(HWND hwnd)
+{
+    if (!hwnd || IsRectEmpty(&g_statusRect)) return;
+    InvalidateRect(hwnd, &g_statusRect, FALSE);
 }
 
 void ApplyMainDwmTheme(HWND hwnd)
@@ -1123,7 +1164,7 @@ void ConfigureModernFilterControls(HWND hwnd)
         RECT rect = {};
         GetWindowRect(child, &rect);
         MapWindowPoints(HWND_DESKTOP, hwnd, reinterpret_cast<POINT*>(&rect), 2);
-        if (rect.top < ScaleForDpi(hwnd, 70))
+        if (rect.top < ScaleForDpi(hwnd, 80))
             ShowWindow(child, SW_HIDE);
     }
     HWND list = GetDlgItem(hwnd, IDC_FILTERS);
@@ -1617,6 +1658,47 @@ void ShiftFilterEditChildren(HWND hwnd, int deltaY)
 void ConfigureModernFilterEditControls(HWND hwnd)
 {
     const bool dark = pdw::CurrentUiTheme() == pdw::UiTheme::Dark;
+    SetWindowTextW(hwnd, L"PDW - Filter toevoegen/bewerken");
+
+    struct LabelUpdate { int id; const wchar_t* text; };
+    const LabelUpdate labels[] = {
+        { IDC_FILTERREJECT, L"Weigeren" },
+        { IDC_FILTERMATCHEXACT, L"Exact bericht" },
+        { IDC_FILTERLABELEN, L"Filterlabel tonen" },
+        { IDC_FILTER_MONITOR_ONLY, L"Alleen monitor" },
+        { IDC_FILTERCMD, L"Opdrachtbestand inschakelen" },
+        { IDC_FILTERSMTP, L"E-mail verzenden (uitgeschakeld)" },
+        { IDC_FILTERRESET, L"Standaard" },
+        { IDC_HITCOUNTER_BOX, L"Trefferteller" },
+        { IDC_SEPFILTERFILEEN, L"Afzonderlijk filterbestand" },
+        { IDC_SEPFILTERFILEBROWSE1, L"Bladeren..." },
+        { IDC_SEPFILTERFILEBROWSE2, L"Bladeren..." },
+        { IDC_SEPFILTERFILEBROWSE3, L"Bladeren..." },
+        { IDC_FILTER_APPLY, L"Toepassen" },
+        { IDCANCEL, L"Annuleren" },
+        { IDC_DONTCHANGE, L"LET OP: grijs betekent 'Niet wijzigen'" }
+    };
+    for (int i = 0; i < static_cast<int>(ARRAYSIZE(labels)); ++i)
+    {
+        HWND control = GetDlgItem(hwnd, labels[i].id);
+        if (control) SetWindowTextW(control, labels[i].text);
+    }
+
+    HWND hits = GetDlgItem(hwnd, IDC_FILTERHITS);
+    if (hits)
+    {
+        wchar_t value[128] = {};
+        GetWindowTextW(hits, value, ARRAYSIZE(value));
+        if (wcsncmp(value, L"Number of hits:", 15) == 0)
+        {
+            const wchar_t* number = value + 15;
+            while (*number == L' ') ++number;
+            wchar_t translated[128] = {};
+            swprintf(translated, ARRAYSIZE(translated), L"Aantal treffers: %s", number);
+            SetWindowTextW(hits, translated);
+        }
+    }
+
     const int actionIds[] = {
         IDOK, IDCANCEL, IDC_FILTER_APPLY, IDC_FILTER_PREVIOUS,
         IDC_FILTER_NEXT, IDC_FILTERRESET,
@@ -1669,6 +1751,19 @@ void ConfigureModernFilterEditControls(HWND hwnd)
                            dark ? L"DarkMode_Explorer" : L"Explorer",
                            NULL);
         }
+        else if (lstrcmpiW(className, L"Static") == 0)
+        {
+            wchar_t text[96] = {};
+            GetWindowTextW(child, text, ARRAYSIZE(text));
+            if (lstrcmpW(text, L"Filter type") == 0)
+                SetWindowTextW(child, L"Filtertype");
+            else if (lstrcmpW(text, L"Address") == 0)
+                SetWindowTextW(child, L"Adres");
+            else if (lstrcmpW(text, L"Color") == 0)
+                SetWindowTextW(child, L"Kleur");
+            else if (lstrcmpW(text, L"Text") == 0)
+                SetWindowTextW(child, L"Tekst");
+        }
     }
 
     HWND help = GetDlgItem(hwnd, IDC_FILTEREDITHELP);
@@ -1682,6 +1777,8 @@ void ConfigureModernFilterEditControls(HWND hwnd)
         exStyle &= ~static_cast<LONG_PTR>(WS_EX_CLIENTEDGE);
         SetWindowLongPtr(help, GWL_EXSTYLE, exStyle);
 
+        SetWindowTextW(help,
+                       L"Stel de filtervoorwaarden in; grijze velden worden niet gewijzigd.");
         SetWindowTheme(help,
                        dark ? L"DarkMode_Explorer" : L"Explorer",
                        NULL);
@@ -1689,6 +1786,87 @@ void ConfigureModernFilterEditControls(HWND hwnd)
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                      SWP_FRAMECHANGED);
     }
+}
+
+void LayoutModernFilterEditAcceptance(HWND hwnd)
+{
+    RECT client = {};
+    GetClientRect(hwnd, &client);
+    const int margin = ScaleForDpi(hwnd, 14);
+    const int gap = ScaleForDpi(hwnd, 8);
+
+    HWND sepBox = GetDlgItem(hwnd, IDC_SEPFILTERBOX);
+    RECT box = {};
+    if (sepBox && GetWindowRect(sepBox, &box))
+    {
+        MapWindowPoints(NULL, hwnd, reinterpret_cast<POINT*>(&box), 2);
+        box.left = margin;
+        box.right = client.right - margin;
+        box.bottom = box.top + ScaleForDpi(hwnd, 118);
+        MoveWindow(sepBox, box.left, box.top,
+                   max(1, box.right - box.left),
+                   max(1, box.bottom - box.top), TRUE);
+
+        HWND enable = GetDlgItem(hwnd, IDC_SEPFILTERFILEEN);
+        if (enable)
+            MoveWindow(enable, box.left + ScaleForDpi(hwnd, 12),
+                       box.top + ScaleForDpi(hwnd, 9),
+                       max(1, box.right - box.left - ScaleForDpi(hwnd, 24)),
+                       ScaleForDpi(hwnd, 22), TRUE);
+
+        const int browseIds[] = {
+            IDC_SEPFILTERFILEBROWSE1, IDC_SEPFILTERFILEBROWSE2,
+            IDC_SEPFILTERFILEBROWSE3
+        };
+        const int editIds[] = {
+            IDC_SEPFILTERFILE1, IDC_SEPFILTERFILE2, IDC_SEPFILTERFILE3
+        };
+        const int browseWidth = ScaleForDpi(hwnd, 84);
+        const int rowHeight = ScaleForDpi(hwnd, 22);
+        for (int i = 0; i < 3; ++i)
+        {
+            const int y = box.top + ScaleForDpi(hwnd, 34) +
+                          i * ScaleForDpi(hwnd, 25);
+            HWND browse = GetDlgItem(hwnd, browseIds[i]);
+            HWND edit = GetDlgItem(hwnd, editIds[i]);
+            if (browse)
+                MoveWindow(browse, box.left + ScaleForDpi(hwnd, 12), y,
+                           browseWidth, rowHeight, TRUE);
+            if (edit)
+            {
+                const int editLeft = box.left + ScaleForDpi(hwnd, 12) +
+                                     browseWidth + gap;
+                MoveWindow(edit, editLeft, y,
+                           max(1, box.right - ScaleForDpi(hwnd, 12) - editLeft),
+                           rowHeight, TRUE);
+            }
+        }
+    }
+
+    const int buttonHeight = ScaleForDpi(hwnd, 32);
+    const int helpHeight = ScaleForDpi(hwnd, 22);
+    const int helpY = client.bottom - margin - helpHeight;
+    const int buttonY = helpY - gap - buttonHeight;
+    const int widths[] = {
+        ScaleForDpi(hwnd, 66), ScaleForDpi(hwnd, 36), ScaleForDpi(hwnd, 88),
+        ScaleForDpi(hwnd, 36), ScaleForDpi(hwnd, 88)
+    };
+    const int ids[] = { IDOK, IDC_FILTER_PREVIOUS, IDC_FILTER_APPLY,
+                        IDC_FILTER_NEXT, IDCANCEL };
+    int totalWidth = 4 * gap;
+    for (int i = 0; i < 5; ++i) totalWidth += widths[i];
+    int x = max(margin, (client.right - totalWidth) / 2);
+    for (int i = 0; i < 5; ++i)
+    {
+        HWND button = GetDlgItem(hwnd, ids[i]);
+        if (button) MoveWindow(button, x, buttonY, widths[i], buttonHeight, TRUE);
+        x += widths[i] + gap;
+    }
+
+    HWND help = GetDlgItem(hwnd, IDC_FILTEREDITHELP);
+    if (help)
+        MoveWindow(help, margin, helpY,
+                   max(1, client.right - 2 * margin), helpHeight, TRUE);
 }
 
 int ExpandFilterEditForHeader(HWND hwnd)
@@ -1702,8 +1880,10 @@ int ExpandFilterEditForHeader(HWND hwnd)
 
     RECT window = {};
     GetWindowRect(hwnd, &window);
+    const int currentWidth = window.right - window.left;
     const int currentHeight = window.bottom - window.top;
     const int header = ScaleForDpi(hwnd, 58);
+    const int extraBottom = ScaleForDpi(hwnd, 72);
 
     HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
     MONITORINFO info = {};
@@ -1712,16 +1892,24 @@ int ExpandFilterEditForHeader(HWND hwnd)
 
     if (GetMonitorInfo(monitor, &info))
     {
+        const int workWidth = info.rcWork.right - info.rcWork.left;
         const int workHeight = info.rcWork.bottom - info.rcWork.top;
-        if (currentHeight + header <= workHeight)
-        {
-            int y = window.top - header / 2;
-            if (y < info.rcWork.top) y = info.rcWork.top;
-            if (y + currentHeight + header > info.rcWork.bottom)
-                y = info.rcWork.bottom - currentHeight - header;
+        int targetWidth = max(currentWidth, ScaleForDpi(hwnd, 460));
+        int targetHeight = currentHeight + header + extraBottom;
+        targetWidth = min(targetWidth, workWidth);
+        targetHeight = min(targetHeight, workHeight);
 
-            SetWindowPos(hwnd, NULL, window.left, y,
-                         window.right - window.left, currentHeight + header,
+        if (targetHeight >= currentHeight + header)
+        {
+            int x = window.left - (targetWidth - currentWidth) / 2;
+            int y = window.top - header / 2;
+            if (x < info.rcWork.left) x = info.rcWork.left;
+            if (x + targetWidth > info.rcWork.right) x = info.rcWork.right - targetWidth;
+            if (y < info.rcWork.top) y = info.rcWork.top;
+            if (y + targetHeight > info.rcWork.bottom)
+                y = info.rcWork.bottom - targetHeight;
+
+            SetWindowPos(hwnd, NULL, x, y, targetWidth, targetHeight,
                          SWP_NOZORDER | SWP_NOACTIVATE);
             ShiftFilterEditChildren(hwnd, header);
             applied = header;
@@ -1835,6 +2023,7 @@ LRESULT CALLBACK FilterEditWindowSubclassProc(HWND hwnd, UINT message, WPARAM wP
 
         case WM_THEMECHANGED:
             ConfigureModernFilterEditControls(hwnd);
+            LayoutModernFilterEditAcceptance(hwnd);
             InvalidateRect(hwnd, NULL, TRUE);
             break;
 
@@ -1864,6 +2053,7 @@ void EnableModernFilterEditDialog(HWND hwnd)
                       kFilterEditWindowSubclassId, 0);
     ExpandFilterEditForHeader(hwnd);
     ConfigureModernFilterEditControls(hwnd);
+    LayoutModernFilterEditAcceptance(hwnd);
     InvalidateRect(hwnd, NULL, TRUE);
 }
 
@@ -4778,6 +4968,15 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
     if (message == WM_ERASEBKGND)
         return 1;
 
+    if (message == WM_PAINT)
+    {
+        PAINTSTRUCT ps = {};
+        HDC hdc = BeginPaint(hwnd, &ps);
+        PaintModernWorkspace(hwnd, hdc, &ps.rcPaint);
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+
     if (message == WM_GETMINMAXINFO)
     {
         const LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
@@ -4801,13 +5000,13 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
                 {
                     CloseSettingsFlyout();
                     g_pressedTarget = -1;
-                    DrawModernWorkspace(hwnd);
+                    InvalidateModernShell(hwnd);
                     return 0;
                 }
                 if (g_settingsFlyout) CloseSettingsFlyout();
                 g_pressedTarget = target;
                 SetCapture(hwnd);
-                DrawModernWorkspace(hwnd);
+                InvalidateModernShell(hwnd);
                 return 0;
             }
         }
@@ -4820,7 +5019,7 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
         const int target = HitTestShell(hwnd, point);
         g_pressedTarget = -1;
         if (GetCapture() == hwnd) ReleaseCapture();
-        DrawModernWorkspace(hwnd);
+        InvalidateModernShell(hwnd);
         if (target == pressed)
             DispatchShellCommand(hwnd, CommandForTarget(pressed));
         return 0;
@@ -4833,7 +5032,7 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
         if (hover != g_hoverTarget)
         {
             g_hoverTarget = hover;
-            DrawModernWorkspace(hwnd);
+            InvalidateModernShell(hwnd);
         }
         TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
         TrackMouseEvent(&tme);
@@ -4842,7 +5041,7 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
     if (message == WM_MOUSELEAVE)
     {
         g_hoverTarget = -1;
-        DrawModernWorkspace(hwnd);
+        InvalidateModernShell(hwnd);
     }
 
     if (message == WM_KEYDOWN && wParam == VK_ESCAPE && g_settingsFlyout)
@@ -4886,16 +5085,21 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
             }
             break;
 
-        case WM_PAINT:
         case WM_NOTIFY:
             DrawModernWorkspace(hwnd);
             break;
 
         case WM_TIMER:
-            // RX quality changes at one-second cadence, while the original
-            // signal indicator state changes on the 100 ms decoder timer.
-            if (wParam == kLegacySecondTimer || wParam == kLegacyDecodeTimer)
-                DrawModernWorkspace(hwnd);
+            // The 100 ms decoder timer already updates PDW's original
+            // si_index signal state. Repaint only the receive header here;
+            // no decoder I/O is performed by the modern presentation layer.
+            if (wParam == kLegacyDecodeTimer)
+                InvalidateModernRx(hwnd);
+            else if (wParam == kLegacySecondTimer)
+            {
+                InvalidateModernRx(hwnd);
+                InvalidateModernStatus(hwnd);
+            }
             break;
 
         case WM_ACTIVATE:
