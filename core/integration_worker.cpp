@@ -52,6 +52,7 @@ bool AsyncIntegrationWorker::Start()
     if (!IsSafeHttpsEndpoint(endpoint_https_)) return false;
     if (options_.queue_capacity == 0 || options_.max_attempts == 0) return false;
     if (options_.request_timeout_ms == 0 || options_.request_timeout_ms > 120000UL) return false;
+    if (options_.initial_backoff_ms > options_.max_backoff_ms) return false;
 
     stopping_ = false;
     running_ = true;
