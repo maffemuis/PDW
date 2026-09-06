@@ -21,6 +21,7 @@ set( PDW_INCLUDES
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_int.h
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.h
   ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/ui_theme.h
   ${CMAKE_CURRENT_SOURCE_DIR}/windows11_ui.h
   
   PARENT_SCOPE
@@ -47,6 +48,7 @@ set( PDW_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_modern.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/ui_theme.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/windows11_ui.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/windows11_pane_skin.cpp
   
