@@ -156,6 +156,18 @@ if( BUILD_TESTING )
       COMMAND pdw_webhook_exception_fail_open_test
   )
 
+  add_executable( pdw_webhook_credential_token_policy_test
+      tests/core/webhook_credential_token_policy_test.cpp
+      core/integration_worker.cpp
+  )
+  target_include_directories( pdw_webhook_credential_token_policy_test PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/core
+  )
+  add_test(
+      NAME pdw_webhook_credential_token_policy
+      COMMAND pdw_webhook_credential_token_policy_test
+  )
+
   add_executable( pdw_webhook_transport_policy_test
       tests/core/webhook_transport_policy_test.cpp
       core/integration_worker.cpp
