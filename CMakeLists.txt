@@ -62,6 +62,7 @@ set( PDW_SRCS
         Rsrc.nl.options.rc
         Rsrc.nl.filters.rc
         Rsrc.nl.remaining.rc
+        Rsrc.nl.finish.rc
         PDW.cpp
         Pocsag.cpp
         acars.cpp
