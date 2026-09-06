@@ -12,6 +12,7 @@
 
 #include "legacy_decoded_message.h"
 #include "preservation_capture.h"
+#include "webhook_integration.h"
 
 namespace
 {
@@ -43,14 +44,18 @@ void PreservationShowMessage(void)
     if (PreservationOneShotReplayRequested())
     {
         // Golden preservation deliberately stops at the decoder-to-ShowMessage
-        // boundary. Do not enter legacy GUI/filter/logging side effects on a
-        // headless runner; just prepare the message accumulator for another
-        // decoded message in the same recording.
+        // boundary. Do not enter legacy GUI/filter/logging or integration side
+        // effects on a headless runner; just prepare the message accumulator for
+        // another decoded message in the same recording.
         iMessageIndex = 0;
         message_buffer[0] = '\0';
         mobitex_buffer[0] = '\0';
         return;
     }
+
+    // Fail-open integration seam: serialization and bounded enqueue only.
+    // All HTTPS work remains on WebhookRuntime's dedicated worker thread.
+    (void)pdw::TryPublishDecodedMessageWebhook(decoded);
 
     ShowMessage();
 }

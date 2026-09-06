@@ -22,6 +22,7 @@ set( PDW_INCLUDES
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.h
   ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection.h
   ${CMAKE_CURRENT_SOURCE_DIR}/ui_theme.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/webhook_integration.h
   ${CMAKE_CURRENT_SOURCE_DIR}/webhook_runtime.h
   ${CMAKE_CURRENT_SOURCE_DIR}/webhook_transport_winhttp.h
   ${CMAKE_CURRENT_SOURCE_DIR}/windows11_ui.h
@@ -51,6 +52,7 @@ set( PDW_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/smtp_protocol.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/synthetic_injection.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/ui_theme.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/webhook_integration.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/webhook_runtime.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/webhook_transport_winhttp.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/windows11_ui.cpp
