@@ -1,0 +1,74 @@
+// Dutch (Netherlands) Windows 11 presentation resources for filter dialogs.
+// Keep all control IDs aligned with Rsrc.rc; presentation/localization only.
+
+#include "resrc1.h"
+#include "windows.h"
+#include "headers\resource.h"
+
+LANGUAGE LANG_DUTCH, SUBLANG_DUTCH
+#pragma code_page(65001)
+
+FILTERDLGBOX DIALOGEX 10, 10, 520, 390
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "PDW - Filters"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "Beheer filters voor ontvangen berichten.",IDC_STATIC,16,14,488,12
+    CONTROL         "List1",IDC_FILTERS,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_SHAREIMAGELISTS | LVS_NOCOLUMNHEADER | WS_BORDER | WS_TABSTOP,16,38,488,306
+    PUSHBUTTON      "Toevoegen",IDC_FILTERADD,16,356,74,20
+    PUSHBUTTON      "Bewerken",IDC_FILTEREDIT,96,356,74,20
+    PUSHBUTTON      "Verwijderen",IDC_FILTERDEL,176,356,74,20
+    PUSHBUTTON      "Opties...",IDC_FILTEROPTIONS,270,356,66,20
+    PUSHBUTTON      "Zoeken...",IDC_FILTERFIND,342,356,66,20,WS_DISABLED
+    DEFPUSHBUTTON   "OK",IDOK,430,356,74,20
+END
+
+FILTEROPTIONSDLGBOX DIALOGEX 10, 10, 470, 430
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "PDW - Filteropties"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "Stel uitvoer, beschrijvingen en standaardgedrag van filters in.",IDC_STATIC,16,14,438,12
+
+    GROUPBOX        "Filteruitvoer naar bestand",IDC_STATIC,16,38,438,72
+    CONTROL         "Filterbestand inschakelen",IDC_FILTERFILEEN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,28,54,132,12
+    PUSHBUTTON      "Bladeren...",IDC_FILTERBROWSE,28,76,62,18
+    EDITTEXT        IDC_FILTERFILE,96,76,222,18,ES_AUTOHSCROLL | WS_TABSTOP
+    CONTROL         "Datum als bestandsnaam gebruiken",IDC_FILTERFILEDATE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,326,78,128,12
+
+    GROUPBOX        "Kolommen in filter-/afzonderlijke bestanden",IDC_STATIC,16,118,438,48
+    CONTROL         "Capcode",931,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,28,136,58,12
+    CONTROL         "Tijd",932,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,92,136,42,12
+    CONTROL         "Datum",933,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,140,136,50,12
+    CONTROL         "Modus",934,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,196,136,52,12
+    CONTROL         "Type",935,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,254,136,46,12
+    CONTROL         "Bitrate",936,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,306,136,54,12
+    CONTROL         "Bericht",937,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,366,136,60,12
+
+    GROUPBOX        "Beschrijvingen",IDC_STATIC,16,174,438,46
+    CONTROL         "In monitorvenster en monitorlogbestand",IDC_LABELLOG,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,28,190,188,12
+    CONTROL         "Op een nieuwe regel",IDC_LABELNEWLINE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,236,190,112,12
+
+    GROUPBOX        "Opdrachtbestand",IDC_STATIC,16,228,438,58
+    CONTROL         "Opdrachtbestand inschakelen",IDC_FILTERCMDEN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,28,244,144,12
+    PUSHBUTTON      "Bladeren...",IDC_FILTERCMDBROWSE,28,262,62,18,WS_DISABLED
+    EDITTEXT        IDC_FILTERCMDFILE,96,262,190,18,ES_AUTOHSCROLL | WS_DISABLED | WS_TABSTOP
+    LTEXT           "Argumenten:",IDC_STATIC,296,265,58,10
+    EDITTEXT        IDC_FILTERCMDARGS,358,262,84,18,ES_AUTOHSCROLL | WS_DISABLED | WS_TABSTOP
+
+    GROUPBOX        "Algemeen",IDC_STATIC,16,294,438,90
+    CONTROL         "Alleen toonberichten tonen",IDC_FILTERTONE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,28,310,138,12
+    CONTROL         "Numerieke berichten tonen",IDC_FILTERNUMERIC,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,28,328,138,12
+    CONTROL         "FLEX binaire/hexgegevens tonen",IDC_FILTERBINARYHEX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,28,346,156,12
+    CONTROL         "Alleen gefilterde berichten in filtervenster/logbestand(en)",IDC_FILTERWINDOWONLY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,204,310,238,12
+    CONTROL         "Filterpiep/WAV-bestanden",IDC_FILTERBEEP,"Button",BS_AUTO3STATE | WS_TABSTOP,204,328,152,12
+    LTEXT           "Standaard filtertype:",IDC_STATIC,204,349,90,10
+    COMBOBOX        IDC_FILTERDEFTYPE,300,346,112,70,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Labelkleuren ook in filterdialoog tonen",IDC_FILTERSCOLORS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,28,366,176,12
+    CONTROL         "CMD/DESC/SEP e.d. in filterdialoog tonen",IDC_FILTERSEXTRA,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,220,366,190,12
+
+    DEFPUSHBUTTON   "OK",IDOK,310,398,66,20
+    PUSHBUTTON      "Annuleren",IDCANCEL,388,398,66,20
+END
