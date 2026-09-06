@@ -57,6 +57,7 @@ set( PDW_SRCS
         Misc.cpp
         Rsrc.rc
         Rsrc.nl.rc
+        Rsrc.nl.scrollback.rc
         PDW.cpp
         Pocsag.cpp
         acars.cpp
