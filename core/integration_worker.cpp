@@ -195,6 +195,7 @@ bool AsyncIntegrationWorker::DeliverWithRetry(const std::string& json_body)
                 return false;
             }
             if (request.bearer_token.empty()) return false;
+            if (request.bearer_token.find_first_of("\r\n") != std::string::npos) return false;
         }
 
         bool posted = false;
