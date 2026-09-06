@@ -1,0 +1,37 @@
+// Dutch (Netherlands) localized Windows 11 presentation resource for scrollback/pane sizing.
+// Keep all control IDs aligned with Rsrc.rc so the existing dialog procedure and behavior remain unchanged.
+
+#include "resrc1.h"
+#include "windows.h"
+#include "headers\resource.h"
+
+LANGUAGE LANG_DUTCH, SUBLANG_DUTCH
+#pragma code_page(65001)
+
+SCROLLDLGBOX DIALOGEX 10, 10, 330, 206
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "PDW - Terugscrollen en venstergroottes"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "Stel de geschiedenis en verdeling van de berichtvensters in.",IDC_STATIC,16,14,298,20
+
+    GROUPBOX        "Terugscrollen",IDC_STATIC,16,42,298,82
+    LTEXT           "Regels in monitorvenster (minimaal 1000):",IDC_STATIC,28,61,184,10
+    EDITTEXT        IDC_SCROLLPANE1,238,58,58,18,ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT           "Regels in filtervenster (minimaal 200):",IDC_STATIC,28,85,184,10
+    EDITTEXT        IDC_SCROLLPANE2,238,82,58,18,ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT           "Scrollsnelheid van muiswiel:",IDC_STATIC,28,109,146,10
+    COMBOBOX        IDC_SCROLLSPEED,178,106,118,70,CBS_DROPDOWNLIST | CBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
+
+    GROUPBOX        "Venstergroottes",IDC_STATIC,16,134,298,44
+    LTEXT           "Monitorvenster:",IDC_STATIC,28,151,80,10
+    EDITTEXT        IDC_PERCENTPANE1,112,148,42,18,ES_CENTER | ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT           "%",IDC_STATIC,158,151,12,10
+    LTEXT           "Filtervenster:",IDC_STATIC,184,151,70,10
+    CTEXT           "",IDC_PERCENTPANE2,258,148,38,18,0,WS_EX_CLIENTEDGE
+    LTEXT           "%",IDC_STATIC,300,151,12,10
+
+    DEFPUSHBUTTON   "OK",IDOK,166,184,66,20
+    PUSHBUTTON      "Annuleren",IDCANCEL,240,184,74,20
+END
