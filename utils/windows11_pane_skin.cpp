@@ -101,7 +101,7 @@ void DrawPaneRows(HWND hwnd, HDC hdc, PaneStruct* pane)
     RECT client = {};
     GetClientRect(hwnd, &client);
 
-    HBRUSH base = CreateSolidBrush(RGB(255, 255, 255));
+    HBRUSH base = CreateSolidBrush(RGB(247, 250, 252));
     FillRect(hdc, &client, base);
     DeleteObject(base);
 
@@ -130,7 +130,7 @@ void DrawPaneRows(HWND hwnd, HDC hdc, PaneStruct* pane)
         RECT rowRect = { 0, row * cellHeight, client.right, (row + 1) * cellHeight };
         if ((row & 1) != 0)
         {
-            HBRUSH alternate = CreateSolidBrush(RGB(250, 252, 254));
+            HBRUSH alternate = CreateSolidBrush(RGB(240, 246, 250));
             FillRect(hdc, &rowRect, alternate);
             DeleteObject(alternate);
         }
@@ -199,8 +199,30 @@ LRESULT CALLBACK ModernPaneSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
         case WM_PAINT:
         {
             PAINTSTRUCT ps = {};
-            HDC hdc = BeginPaint(hwnd, &ps);
-            DrawPaneRows(hwnd, hdc, pane);
+            HDC target = BeginPaint(hwnd, &ps);
+            RECT client = {};
+            GetClientRect(hwnd, &client);
+            const int width = client.right - client.left;
+            const int height = client.bottom - client.top;
+
+            HDC buffer = (width > 0 && height > 0) ? CreateCompatibleDC(target) : NULL;
+            HBITMAP bitmap = buffer ? CreateCompatibleBitmap(target, width, height) : NULL;
+            HGDIOBJ oldBitmap = (buffer && bitmap) ? SelectObject(buffer, bitmap) : NULL;
+
+            if (buffer && bitmap)
+            {
+                DrawPaneRows(hwnd, buffer, pane);
+                BitBlt(target, 0, 0, width, height, buffer, 0, 0, SRCCOPY);
+                SelectObject(buffer, oldBitmap);
+                DeleteObject(bitmap);
+                DeleteDC(buffer);
+            }
+            else
+            {
+                if (buffer) DeleteDC(buffer);
+                DrawPaneRows(hwnd, target, pane);
+            }
+
             EndPaint(hwnd, &ps);
             return 0;
         }
@@ -223,7 +245,8 @@ LRESULT CALLBACK ModernPaneSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
             // We only repaint its result so the old XOR/legacy visual never
             // becomes the persistent presentation layer.
             const LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
-            InvalidateRect(hwnd, NULL, FALSE);
+            if (message != WM_MOUSEMOVE || selecting != 0)
+                InvalidateRect(hwnd, NULL, FALSE);
             return result;
         }
 

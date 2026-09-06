@@ -6448,7 +6448,7 @@ void BuildFilterString(char *temp_str, FILTER filter)
 			}
 			else if (filter.wave_number == 0)
 			{
-				strcat(temp_str, "Default");
+				strcat(temp_str, "Standaard");
 			}
 			else
 			{
@@ -6517,7 +6517,7 @@ BOOL FAR PASCAL FilterDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam
 					{
 						SetTextColor(lpdis->hDC, RGB(0x44, 0x44, 0x44));	// GRAY
 					}
-					FillRect(lpdis->hDC, &rect, hb = CreateSolidBrush(Profile.color_background));
+					FillRect(lpdis->hDC, &rect, hb = CreateSolidBrush(RGB(247, 250, 252)));
 					DeleteObject(hb) ;
 				}
 
@@ -7431,7 +7431,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 	static char *types[6] = { "FLEX Capcode", "POCSAG Riccode", "TEXT",
 							  "ERMES Address","ACARS Reg.no", "Mobitex MAN" };
 
-	static char *label_colors[18] = { "Default",   "Yellow",   "Red",     "Orange",    "Light Blue",
+	static char *label_colors[18] = { "Standaard",   "Yellow",   "Red",     "Orange",    "Light Blue",
 									  "Cyan",      "White",    "Green",   "Gray",      "Brown",
 									  "Light Cyan","Blue",     "Magenta", "Sea Green", "Pink",
 									  "Ice Blue",  "Turqoise", "Don't Change"};
@@ -7519,7 +7519,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 
 			case IDC_FILTERCAPCODE :
 
-			strcpy(szFilterEditHelpText, " Enter the capcode/riccode to filter. Use ? as wildcard.");
+			strcpy(szFilterEditHelpText, " Voer de capcode/riccode in. Gebruik ? als jokerteken.");
 
 			break;
 
@@ -7750,11 +7750,11 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 			SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_SETCURSEL, (WPARAM) 1, 0L);
 			SendDlgItemMessage(hDlg, IDC_FILTERLABELCOLOR, CB_SETCURSEL, (WPARAM) 0, 0L);
 
-			SetWindowText(hDlg, (LPSTR) "PDW Add Filter");
+			SetWindowText(hDlg, (LPSTR) "PDW - Filter toevoegen");
 		}
 		else	 // Edit Filter
 		{
-			SetWindowText(hDlg, (LPSTR) multiple_edit ? "PDW (multiple) Edit Filter" : "PDW Edit Filter");
+			SetWindowText(hDlg, (LPSTR) multiple_edit ? "PDW - Meerdere filters bewerken" : "PDW - Filter bewerken");
 
 			if (multiple_edit)	// If more than one filter is selected
 			{
@@ -7851,13 +7851,13 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 		CheckDlgButton(hDlg, IDC_SEPFILTERFILEEN,     sep_en       ? BST_INDETERMINATE : filter.sep_filterfile_en);
 
 		SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_RESETCONTENT, 0, 0);
-		SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "No sound");
+		SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "Geen geluid");
 
 		if (!monitor_only)				// If Monitor-Only != BST_INDETERMINATE
 		{
 			if (!filter.monitor_only)	// If all selected filters =! Monitor-Only
 			{
-				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "Default");
+				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "Standaard");
 				for (i=0; i<FILTER_SOUND_COUNT; i++)
 				{
 					sprintf(temp, "Sound%i.wav", i);
@@ -8139,13 +8139,13 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 			{
 				CheckDlgButton(hDlg, IDC_FILTERREJECT, BST_UNCHECKED);
 
-				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM)(LPCTSTR) "No sound");
+				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM)(LPCTSTR) "Geen geluid");
 				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM)(LPCTSTR) "Monitor_only.wav");
 			}
 			else // if !monitor_only
 			{
-				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "No sound");
-				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "Default");
+				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "Geen geluid");
+				SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_ADDSTRING, 0, (LPARAM) (LPSTR) "Standaard");
 
 				for (i=0; i<FILTER_SOUND_COUNT; i++)
 				{
@@ -8534,7 +8534,7 @@ BOOL FAR PASCAL FilterEditDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lP
 					}
 					else if (multiple_edit && SendDlgItemMessage(hDlg, IDC_FILTERAUDIO, CB_GETCURSEL, 0, 0L) == 0)
 					{
-						// "No sound" has different legacy numeric values for monitor-only
+						// "Geen geluid" has different legacy numeric values for monitor-only
 						// and normal filters; preserve that representation per row.
 						Profile.filters[index].wave_number = Profile.filters[index].monitor_only ? 0 : -1;
 					}

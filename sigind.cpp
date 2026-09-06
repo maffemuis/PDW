@@ -154,48 +154,48 @@ void DrawSigInd(HWND hwnd)
 // removing old line first.
 void UpdateSigInd(int direction_flg)
 {
-	si_old_index = si_index;
+    si_old_index = si_index;
 
-	if (old_rect_flg)
-	{
-		if (direction_flg)	// Move indictor right 1
-		{
-			si_low_hover=0;
-			si_index ? si_index+=2 : si_index++;
+    if (direction_flg) // Move indicator right
+    {
+        si_low_hover = 0;
+        si_index ? si_index += 2 : si_index++;
 
-			if (si_index > MAX_SI_POS)
-			{
-				si_hi_hover++;
-				si_index=MAX_SI_POS;
-				return;
-			}
-	 	}
-		else
-		{							// Move indictor left 1
-			if (si_low_hover)
-			{
-				if (si_low_hover==1)
-				{
-					show_sigind(1, 0);
-				}
-				if (si_low_hover > 1)
-				{
-					si_low_hover=0;
-					show_sigind(0, 1);
-				}
-			}
-			si_hi_hover=0;
-			si_index--;
+        if (si_index > MAX_SI_POS)
+        {
+            si_hi_hover++;
+            si_index = MAX_SI_POS;
+            return;
+        }
+    }
+    else // Move indicator left
+    {
+        if (si_low_hover)
+        {
+            // Preserve the old low-end needle animation when the bitmap UI is
+            // actually active. The state machine itself stays active for the
+            // modern meter even though legacy drawing is suppressed.
+            if (old_rect_flg && si_low_hover == 1)
+                show_sigind(1, 0);
+            if (si_low_hover > 1)
+            {
+                si_low_hover = 0;
+                if (old_rect_flg) show_sigind(0, 1);
+            }
+        }
+        si_hi_hover = 0;
+        si_index--;
 
-			if (si_index < 0)
-			{
-				si_low_hover++;
-				si_index=0;
-				return;
-			}
-		}
-		show_sigind(si_index, si_old_index);
-	}
+        if (si_index < 0)
+        {
+            si_low_hover++;
+            si_index = 0;
+            return;
+        }
+    }
+
+    if (old_rect_flg)
+        show_sigind(si_index, si_old_index);
 }
 
 

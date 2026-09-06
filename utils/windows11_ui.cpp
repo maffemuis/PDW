@@ -14,6 +14,7 @@
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 extern double dRX_Quality;
+extern int si_index;
 extern bool bPauseFlag;
 
 namespace {
@@ -311,7 +312,7 @@ void DrawIconTextButton(HDC hdc, const RECT& rect, const wchar_t* icon,
 {
     const COLORREF accent = RGB(0, 120, 212);
     const COLORREF accentPressed = RGB(0, 95, 184);
-    const COLORREF normalBg = RGB(250, 250, 250);
+    const COLORREF normalBg = RGB(246, 249, 252);
     const COLORREF hoverBg = RGB(240, 246, 252);
     const COLORREF fg = RGB(32, 32, 32);
     const COLORREF selectedFg = RGB(255, 255, 255);
@@ -355,8 +356,8 @@ void DrawIconTextButton(HDC hdc, const RECT& rect, const wchar_t* icon,
 void DrawTopNavigation(HDC hdc, HWND hwnd, const RECT& client)
 {
     BuildShellTargets(hwnd);
-    const COLORREF shellBg = RGB(247, 250, 253);
-    const COLORREF capsuleBg = RGB(249, 251, 253);
+    const COLORREF shellBg = RGB(238, 244, 249);
+    const COLORREF capsuleBg = RGB(244, 248, 251);
     const COLORREF capsuleBorder = RGB(224, 231, 239);
 
     RECT row = { 0, 0, client.right, CommandTop(hwnd) - ScaleForDpi(hwnd, 3) };
@@ -388,7 +389,7 @@ void DrawTopNavigation(HDC hdc, HWND hwnd, const RECT& client)
 void DrawCommandStrip(HDC hdc, HWND hwnd, const RECT& client)
 {
     BuildShellTargets(hwnd);
-    const COLORREF rowBg = RGB(252, 253, 254);
+    const COLORREF rowBg = RGB(245, 249, 252);
     const COLORREF rowBorder = RGB(218, 226, 235);
     const int top = CommandTop(hwnd);
     const int height = CommandHeight(hwnd);
@@ -444,7 +445,7 @@ void DrawColumnHeaders(HDC hdc, HWND hwnd, const RECT& body, bool filteredPane)
 
     const int headerHeight = ColumnHeaderHeight(hwnd);
     const int y = body.top - headerHeight;
-    const COLORREF background = RGB(249, 251, 253);
+    const COLORREF background = RGB(239, 245, 250);
     const COLORREF foreground = RGB(45, 45, 45);
     const COLORREF divider = RGB(225, 230, 236);
 
@@ -494,9 +495,9 @@ void DrawColumnHeaders(HDC hdc, HWND hwnd, const RECT& body, bool filteredPane)
 void DrawCard(HDC hdc, HWND hwnd, const RECT& card, const RECT& body,
               const wchar_t* title, bool withRx)
 {
-    const COLORREF cardBg = RGB(255, 255, 255);
+    const COLORREF cardBg = RGB(248, 251, 253);
     const COLORREF cardBorder = RGB(206, 217, 229);
-    const COLORREF titleBg = RGB(245, 249, 253);
+    const COLORREF titleBg = RGB(236, 243, 249);
     const COLORREF titleFg = RGB(24, 39, 58);
     const int radius = ScaleForDpi(hwnd, 10);
     const int titleHeight = CardTitleHeight(hwnd);
@@ -520,27 +521,75 @@ void DrawCard(HDC hdc, HWND hwnd, const RECT& card, const RECT& body,
 
     if (withRx)
     {
-        const bool active = !bPauseFlag && dRX_Quality > 0.0;
-        const COLORREF dot = active ? RGB(20, 170, 62) : RGB(154, 160, 168);
-        const int dotSize = ScaleForDpi(hwnd, 10);
-        const int dotRight = card.right - ScaleForDpi(hwnd, 14);
-        const int cy = titleRect.top + (titleHeight / 2);
-        HBRUSH dotBrush = CreateSolidBrush(dot);
-        HPEN dotPen = CreatePen(PS_SOLID, 1, dot);
-        HGDIOBJ oldBrush = SelectObject(hdc, dotBrush);
-        HGDIOBJ oldPen = SelectObject(hdc, dotPen);
-        Ellipse(hdc, dotRight - dotSize, cy - dotSize / 2,
-                dotRight, cy + dotSize / 2);
-        SelectObject(hdc, oldPen);
-        SelectObject(hdc, oldBrush);
-        DeleteObject(dotPen);
-        DeleteObject(dotBrush);
+        // si_index is PDW's original live signal-indicator state (0..20).
+        // It follows the raw receive transitions and therefore moves while
+        // listening and swings on a received signal. dRX_Quality is a separate
+        // decode-quality metric and is shown only as the percentage.
+        int signal = si_index;
+        if (signal < 0) signal = 0;
+        if (signal > 20) signal = 20;
 
-        SetTextColor(hdc, titleFg);
+        double quality = dRX_Quality;
+        if (quality < 0.0) quality = 0.0;
+        if (quality > 100.0) quality = 100.0;
+
+        const int cy = titleRect.top + (titleHeight / 2);
+        const int meterWidth = ScaleForDpi(hwnd, 104);
+        const int meterHeight = ScaleForDpi(hwnd, 10);
+        const int meterRight = card.right - ScaleForDpi(hwnd, 76);
+        RECT meter = {
+            meterRight - meterWidth,
+            cy - meterHeight / 2,
+            meterRight,
+            cy + meterHeight / 2
+        };
+        FillRoundedRect(hdc, meter, RGB(219, 228, 236), RGB(203, 214, 224),
+                        ScaleForDpi(hwnd, 8));
+
+        const int innerPad = ScaleForDpi(hwnd, 2);
+        RECT inner = {
+            meter.left + innerPad,
+            meter.top + innerPad,
+            meter.right - innerPad,
+            meter.bottom - innerPad
+        };
+        const int innerWidth = inner.right - inner.left;
+        const int liveWidth = (innerWidth * signal) / 20;
+        if (liveWidth > 0)
+        {
+            RECT live = inner;
+            live.right = live.left + liveWidth;
+            const COLORREF signalColor = signal >= 15
+                ? RGB(20, 170, 62)
+                : (signal >= 8 ? RGB(0, 120, 212) : RGB(86, 145, 198));
+            FillRoundedRect(hdc, live, signalColor, signalColor,
+                            ScaleForDpi(hwnd, 6));
+        }
+
+        // A small marker makes low-level/noise movement visible even when only
+        // one or two of the old signal steps are active.
+        const int markerX = inner.left + (innerWidth * signal) / 20;
+        HPEN markerPen = CreatePen(PS_SOLID, ScaleForDpi(hwnd, 2), RGB(28, 45, 62));
+        HGDIOBJ oldPen = SelectObject(hdc, markerPen);
+        MoveToEx(hdc, markerX, meter.top - ScaleForDpi(hwnd, 2), NULL);
+        LineTo(hdc, markerX, meter.bottom + ScaleForDpi(hwnd, 2));
+        SelectObject(hdc, oldPen);
+        DeleteObject(markerPen);
+
+        wchar_t qualityText[32] = {};
+        if (quality > 0.0)
+            swprintf(qualityText, ARRAYSIZE(qualityText), L"%.1f%%", quality);
+        else
+            lstrcpyW(qualityText, L"--.-%");
+
+        SetTextColor(hdc, quality > 0.0 && quality < 90.0
+                     ? RGB(145, 86, 0) : titleFg);
         oldFont = SelectObject(hdc, GetHeaderFont());
-        RECT rxText = { dotRight - ScaleForDpi(hwnd, 70), titleRect.top,
-                        dotRight - ScaleForDpi(hwnd, 16), titleRect.bottom };
-        DrawTextW(hdc, L"RX-Q", -1, &rxText,
+        RECT rxText = {
+            meter.right + ScaleForDpi(hwnd, 8), titleRect.top,
+            card.right - ScaleForDpi(hwnd, 14), titleRect.bottom
+        };
+        DrawTextW(hdc, qualityText, -1, &rxText,
                   DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
         SelectObject(hdc, oldFont);
     }
@@ -560,7 +609,7 @@ const wchar_t* CurrentModeLabel()
 
 void DrawStatusBar(HDC hdc, HWND hwnd)
 {
-    const COLORREF bg = RGB(249, 251, 253);
+    const COLORREF bg = RGB(239, 245, 250);
     const COLORREF line = RGB(216, 224, 233);
     const COLORREF fg = RGB(42, 51, 61);
     const COLORREF green = RGB(20, 170, 62);
@@ -700,11 +749,20 @@ void DrawModernWorkspace(HWND hwnd)
 {
     RECT client = {};
     GetClientRect(hwnd, &client);
-    HDC hdc = GetDCEx(hwnd, NULL, DCX_CACHE | DCX_CLIPCHILDREN);
-    if (!hdc) hdc = GetDC(hwnd);
-    if (!hdc) return;
+    const int width = client.right - client.left;
+    const int height = client.bottom - client.top;
+    if (width <= 0 || height <= 0) return;
 
-    const COLORREF workspace = RGB(241, 246, 251);
+    HDC target = GetDCEx(hwnd, NULL, DCX_CACHE | DCX_CLIPCHILDREN);
+    if (!target) target = GetDC(hwnd);
+    if (!target) return;
+
+    HDC buffer = CreateCompatibleDC(target);
+    HBITMAP bitmap = buffer ? CreateCompatibleBitmap(target, width, height) : NULL;
+    HGDIOBJ oldBitmap = (buffer && bitmap) ? SelectObject(buffer, bitmap) : NULL;
+    HDC hdc = (buffer && bitmap) ? buffer : target;
+
+    const COLORREF workspace = RGB(231, 238, 245);
     HBRUSH background = CreateSolidBrush(workspace);
     FillRect(hdc, &client, background);
     DeleteObject(background);
@@ -715,7 +773,19 @@ void DrawModernWorkspace(HWND hwnd)
     DrawCard(hdc, hwnd, g_pane2Card, g_pane2Body, L"Filtered messages", false);
     DrawStatusBar(hdc, hwnd);
 
-    ReleaseDC(hwnd, hdc);
+    if (buffer && bitmap)
+    {
+        BitBlt(target, 0, 0, width, height, buffer, 0, 0, SRCCOPY);
+        SelectObject(buffer, oldBitmap);
+        DeleteObject(bitmap);
+        DeleteDC(buffer);
+    }
+    else if (buffer)
+    {
+        DeleteDC(buffer);
+    }
+
+    ReleaseDC(hwnd, target);
 }
 
 void CloseSettingsFlyout()
@@ -906,6 +976,20 @@ bool IsFilterDialog(HWND hwnd)
 
 void ConfigureModernFilterControls(HWND hwnd)
 {
+    for (HWND child = GetWindow(hwnd, GW_CHILD);
+         child;
+         child = GetWindow(child, GW_HWNDNEXT))
+    {
+        wchar_t className[32] = {};
+        if (GetClassNameW(child, className, ARRAYSIZE(className)) <= 0 ||
+            lstrcmpiW(className, L"Static") != 0)
+            continue;
+        RECT rect = {};
+        GetWindowRect(child, &rect);
+        MapWindowPoints(HWND_DESKTOP, hwnd, reinterpret_cast<POINT*>(&rect), 2);
+        if (rect.top < ScaleForDpi(hwnd, 70))
+            ShowWindow(child, SW_HIDE);
+    }
     HWND list = GetDlgItem(hwnd, IDC_FILTERS);
     if (list)
     {
@@ -923,11 +1007,9 @@ void ConfigureModernFilterControls(HWND hwnd)
             LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
         SendMessage(list, WM_SETFONT,
                     reinterpret_cast<WPARAM>(GetFilterListFont()), TRUE);
-        if (!Profile.FilterWindowColors)
-        {
-            SendMessage(list, LVM_SETBKCOLOR, 0, RGB(255, 255, 255));
-            SendMessage(list, LVM_SETTEXTBKCOLOR, 0, CLR_NONE);
-        }
+        ListView_SetBkColor(list, RGB(247, 250, 252));
+        ListView_SetTextBkColor(list, RGB(247, 250, 252));
+        ListView_SetTextColor(list, RGB(32, 40, 48));
         SetWindowPos(list, NULL, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                      SWP_FRAMECHANGED);
@@ -1103,7 +1185,7 @@ void PaintModernFilterDialog(HWND hwnd, HDC hdc)
     RECT subtitle = { margin, ScaleForDpi(hwnd, 40),
                       client.right - margin - ScaleForDpi(hwnd, 130),
                       ScaleForDpi(hwnd, 62) };
-    DrawTextW(hdc, L"Manage address and message matching rules.", -1, &subtitle,
+    DrawTextW(hdc, L"Beheer adressen en regels voor berichtovereenkomsten.", -1, &subtitle,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
     SelectObject(hdc, oldFont);
 
@@ -3476,7 +3558,7 @@ void PaintModernInterfaceSetupDialog(HWND hwnd, HDC hdc)
         ScaleForDpi(hwnd, 14), ScaleForDpi(hwnd, 8),
         client.right - ScaleForDpi(hwnd, 14), ScaleForDpi(hwnd, 31)
     };
-    DrawTextW(hdc, L"Interface setup", -1, &title,
+    DrawTextW(hdc, L"Interface-instellingen", -1, &title,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
     SelectObject(hdc, oldFont);
 
@@ -3487,7 +3569,7 @@ void PaintModernInterfaceSetupDialog(HWND hwnd, HDC hdc)
         client.right - ScaleForDpi(hwnd, 14), header - ScaleForDpi(hwnd, 5)
     };
     DrawTextW(hdc,
-              L"Configure serial input and soundcard capture without changing decoder behavior.",
+              L"Configureer seriële invoer en geluidskaartopname zonder het decodergedrag te wijzigen.",
               -1, &subtitle,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX |
               DT_END_ELLIPSIS);
@@ -4407,6 +4489,9 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
                                         LPARAM lParam, UINT_PTR subclassId,
                                         DWORD_PTR referenceData)
 {
+    if (message == WM_ERASEBKGND)
+        return 1;
+
     if (message == WM_GETMINMAXINFO)
     {
         const LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
@@ -4521,7 +4606,10 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
             break;
 
         case WM_TIMER:
-            if (wParam == kLegacySecondTimer) DrawModernWorkspace(hwnd);
+            // RX quality changes at one-second cadence, while the original
+            // signal indicator state changes on the 100 ms decoder timer.
+            if (wParam == kLegacySecondTimer || wParam == PDW_TIMER)
+                DrawModernWorkspace(hwnd);
             break;
 
         case WM_ACTIVATE:
