@@ -9,6 +9,77 @@
 LANGUAGE LANG_DUTCH, SUBLANG_DUTCH
 #pragma code_page(65001)
 
+PDWMENU MENU
+BEGIN
+    POPUP "&Bestand"
+    BEGIN
+        MENUITEM "Logbestand &openen/sluiten...\tAlt+L", IDM_LOGFILE
+        MENUITEM SEPARATOR
+        MENUITEM "A&fsluiten\tAlt+F4",                 IDM_EXIT
+    END
+    POPUP "&Bewerken"
+    BEGIN
+        MENUITEM "Selectie &kopiëren\tCtrl+C",         IDM_COPY_SELECTION
+        MENUITEM "&Monitorvenster kopiëren\tCtrl+U",    IDM_COPY_UPPER
+        MENUITEM "&Filtervenster kopiëren\tCtrl+L",     IDM_COPY_LOWER
+        MENUITEM "Klembord &opslaan...",                IDM_COPY_SAVE
+        MENUITEM "Klembord &afdrukken...\tCtrl+P",      IDM_COPY_PRINT
+    END
+    POPUP "&Interface"
+    BEGIN
+        MENUITEM "&Instellen...\tCtrl-S",               IDM_INTERFACE
+        MENUITEM "&Volume...\tAlt-V",                   IDM_VOLUME
+    END
+    POPUP "&Opties"
+    BEGIN
+        MENUITEM "&Opties...\tCtrl-O",                  IDM_OPTIONS
+        MENUITEM "&Algemeen...\tCtrl-G",                IDM_GENERAL
+        MENUITEM "&SMTP/E-mail...\tCtrl-M",             IDM_MAIL
+    END
+    POPUP "&Filters"
+    BEGIN
+        MENUITEM "&Filterlijst...\tCtrl-F",             IDM_FILTERS
+        MENUITEM "Filter&opties...",                    IDM_FILTEROPTIONS
+        MENUITEM "Filters &herladen",                   IDM_RELOAD
+        MENUITEM "Alle &treffertellers resetten...",    IDM_RESET_HITCOUNTERS
+        MENUITEM SEPARATOR
+        MENUITEM "Filteruitvoer naar bestand",          IDM_FILTERFILE_EN
+        MENUITEM "Filter-opdrachtbestand",              IDM_FILTERCOMMANDFILE
+        MENUITEM SEPARATOR
+        MENUITEM "TEST-/SYNTHETISCH bericht verzenden...", IDM_TEST_MESSAGE
+    END
+    POPUP "&Weergave"
+    BEGIN
+        MENUITEM "Scherm &wissen...\tCtrl-D",            IDM_CLEARDISPLAY
+        MENUITEM "&Kleuren...",                         IDM_COLOR
+        MENUITEM "&Lettertype...\tAlt-F",               IDM_FONT
+        MENUITEM "Scherm&opties...",                    IDM_SCREENOPTIONS
+        MENUITEM "&Terugscrollen...",                   IDM_SCROLLBACK
+        MENUITEM "Systeem&vak...\tCtrl-T",              IDM_SYSTEMTRAY
+    END
+    POPUP "&Monitor"
+    BEGIN
+        MENUITEM "&POCSAG/FLEX",                        IDM_POCSAGFLEX
+        MENUITEM "&ACARS",                              IDM_ACARS
+        MENUITEM "&MOBITEX",                            IDM_MOBITEX
+        MENUITEM "&ERMES",                              IDM_ERMES
+        MENUITEM SEPARATOR
+        MENUITEM "&Statistieken...\tAlt-S",             IDM_MONSTAT
+    END
+    POPUP "&Tekenset"
+    BEGIN
+        MENUITEM "&Standaard",                          IDM_ENGLISH
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&Help (opent PDW.pdf)\tF1",           IDM_HELP
+        MENUITEM SEPARATOR
+        MENUITEM "&Diagnostische informatie...\tF12",   IDM_DEBUG
+        MENUITEM SEPARATOR
+        MENUITEM "&Over PDW...",                        IDM_ABOUT
+    END
+END
+
 ABOUTDLGBOX DIALOGEX 10, 10, 330, 188
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTROLPARENT
