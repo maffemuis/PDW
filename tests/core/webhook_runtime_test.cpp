@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <chrono>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -10,21 +11,48 @@ namespace
 class FakeTransport : public pdw::IWebhookTransport
 {
 public:
-    FakeTransport() : calls(0) {}
+    FakeTransport() : calls_(0), last_timeout_(0) {}
 
     bool PostJson(const pdw::WebhookDeliveryRequest& request) override
     {
-        ++calls;
-        last_endpoint = request.endpoint_https;
-        last_body = request.json_body;
-        last_timeout = request.timeout_ms;
+        std::lock_guard<std::mutex> lock(mutex_);
+        ++calls_;
+        last_endpoint_ = request.endpoint_https;
+        last_body_ = request.json_body;
+        last_timeout_ = request.timeout_ms;
         return true;
     }
 
-    int calls;
-    std::string last_endpoint;
-    std::string last_body;
-    unsigned long last_timeout;
+    int Calls() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return calls_;
+    }
+
+    std::string LastEndpoint() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return last_endpoint_;
+    }
+
+    std::string LastBody() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return last_body_;
+    }
+
+    unsigned long LastTimeout() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return last_timeout_;
+    }
+
+private:
+    mutable std::mutex mutex_;
+    int calls_;
+    std::string last_endpoint_;
+    std::string last_body_;
+    unsigned long last_timeout_;
 };
 }
 
@@ -61,13 +89,13 @@ int main()
     assert(runtime.IsEnabled());
     assert(runtime.TryEnqueue("{\"event\":2}"));
 
-    for (int i = 0; i < 100 && transport.calls == 0; ++i)
+    for (int i = 0; i < 100 && transport.Calls() == 0; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    assert(transport.calls == 1);
-    assert(transport.last_endpoint == valid.endpoint_https);
-    assert(transport.last_body == "{\"event\":2}");
-    assert(transport.last_timeout == valid.request_timeout_ms);
+    assert(transport.Calls() == 1);
+    assert(transport.LastEndpoint() == valid.endpoint_https);
+    assert(transport.LastBody() == "{\"event\":2}");
+    assert(transport.LastTimeout() == valid.request_timeout_ms);
 
     runtime.Stop();
     assert(!runtime.IsEnabled());
