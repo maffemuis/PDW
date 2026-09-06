@@ -193,15 +193,26 @@ bool AsyncIntegrationWorker::DeliverWithRetry(const std::string& json_body)
         }
 
         if (transport_.PostJson(request)) return true;
+        if (attempt + 1 >= options_.max_attempts) return false;
 
-        if (attempt + 1 < options_.max_attempts && backoff_ms > 0)
+        // A shutdown must not wait through retry backoff or start another
+        // network attempt. The currently executing transport call is the only
+        // operation Stop() is allowed to wait for.
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
-            const unsigned long doubled = backoff_ms > (options_.max_backoff_ms / 2)
-                ? options_.max_backoff_ms
-                : backoff_ms * 2;
-            backoff_ms = std::min(doubled, options_.max_backoff_ms);
+            std::unique_lock<std::mutex> lock(mutex_);
+            if (stopping_) return false;
+            if (backoff_ms > 0 &&
+                wake_.wait_for(lock, std::chrono::milliseconds(backoff_ms),
+                               [this]() { return stopping_; }))
+            {
+                return false;
+            }
         }
+
+        const unsigned long doubled = backoff_ms > (options_.max_backoff_ms / 2)
+            ? options_.max_backoff_ms
+            : backoff_ms * 2;
+        backoff_ms = std::min(doubled, options_.max_backoff_ms);
     }
     return false;
 }
