@@ -135,6 +135,20 @@ target_link_libraries( PDW
 )
 
 if( BUILD_TESTING )
+  # Theme selection is deliberately isolated from HWND/GDI rendering so its
+  # dark-default and persistence contract can regress independently.
+  add_executable( pdw_ui_theme_test
+      tests/utils/ui_theme_test.cpp
+      utils/ui_theme.cpp
+  )
+  target_include_directories( pdw_ui_theme_test PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/utils
+  )
+  add_test(
+      NAME pdw_ui_theme
+      COMMAND pdw_ui_theme_test
+  )
+
   add_subdirectory( tests )
 
   if( MSVC )
