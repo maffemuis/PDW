@@ -51,7 +51,7 @@ jobs:
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
         run: cmake --build build-ui --config Release
 
-      - name: Capture main-window screenshot
+      - name: Capture and validate real PDW main window
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
         run: |
           $ErrorActionPreference = "Stop"
@@ -84,6 +84,9 @@ jobs:
               [DllImport("user32.dll", CharSet=CharSet.Unicode)]
               public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
 
+              [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+              public static extern int GetClassName(IntPtr hWnd, StringBuilder className, int maxCount);
+
               [DllImport("user32.dll", SetLastError=true)]
               public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 
@@ -97,7 +100,7 @@ jobs:
               [DllImport("user32.dll")]
               public static extern bool ShowWindow(IntPtr hWnd, int command);
 
-              public static IntPtr FindLargestWindowForProcess(uint processId, out string diagnostics) {
+              public static IntPtr FindVisibleMainWindowForProcess(uint processId, out string diagnostics) {
                   IntPtr best = IntPtr.Zero;
                   long bestArea = -1;
                   StringBuilder log = new StringBuilder();
@@ -113,12 +116,19 @@ jobs:
                       int height = rect.Bottom - rect.Top;
                       long area = (long)Math.Max(0, width) * Math.Max(0, height);
                       StringBuilder title = new StringBuilder(512);
+                      StringBuilder className = new StringBuilder(256);
                       GetWindowText(hwnd, title, title.Capacity);
+                      GetClassName(hwnd, className, className.Capacity);
                       bool visible = IsWindowVisible(hwnd);
-                      log.AppendLine(String.Format("hwnd=0x{0:X} visible={1} size={2}x{3} title={4}",
-                          hwnd.ToInt64(), visible, width, height, title.ToString()));
+                      bool correctClass = String.Equals(className.ToString(), "WinPDWWndClass", StringComparison.Ordinal);
+                      bool usableSize = width >= 640 && height >= 400;
 
-                      if (area > bestArea) {
+                      log.AppendLine(String.Format(
+                          "hwnd=0x{0:X} visible={1} class={2} size={3}x{4} main_candidate={5} title={6}",
+                          hwnd.ToInt64(), visible, className.ToString(), width, height,
+                          visible && correctClass && usableSize, title.ToString()));
+
+                      if (visible && correctClass && usableSize && area > bestArea) {
                           bestArea = area;
                           best = hwnd;
                       }
@@ -136,6 +146,7 @@ jobs:
           New-Item -ItemType Directory -Force $outDir | Out-Null
           $png = Join-Path $outDir "pdw-main-window.png"
           $diagnosticsPath = Join-Path $outDir "window-diagnostics.txt"
+          $validationPath = Join-Path $outDir "screenshot-validation.txt"
 
           $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
           try {
@@ -146,21 +157,24 @@ jobs:
               Start-Sleep -Milliseconds 250
               $process.Refresh()
               if ($process.HasExited) {
-                throw "PDW exited before a top-level window became available (exit $($process.ExitCode))."
+                throw "PDW exited before its visible WinPDWWndClass main window became available (exit $($process.ExitCode))."
               }
-              $hwnd = [PdwWindowCapture]::FindLargestWindowForProcess([uint32]$process.Id, [ref]$diagnostics)
+              $hwnd = [PdwWindowCapture]::FindVisibleMainWindowForProcess([uint32]$process.Id, [ref]$diagnostics)
             } while ($hwnd -eq [IntPtr]::Zero -and (Get-Date) -lt $deadline)
 
             @(
               "process_id=$($process.Id)"
               "process_name=$($process.ProcessName)"
-              "main_window_handle=$($process.MainWindowHandle)"
+              "process_main_window_handle=$($process.MainWindowHandle)"
+              "required_class=WinPDWWndClass"
+              "required_visible=True"
+              "required_min_size=640x400"
               "enumerated_windows:"
               $diagnostics
             ) | Set-Content -Path $diagnosticsPath -Encoding UTF8
 
             if ($hwnd -eq [IntPtr]::Zero) {
-              throw "PDW did not expose any top-level window within 20 seconds."
+              throw "PDW did not expose a visible WinPDWWndClass main window of at least 640x400 within 20 seconds. This runner does not provide valid interactive visual-acceptance evidence."
             }
 
             [PdwWindowCapture]::ShowWindow($hwnd, 9) | Out-Null
@@ -173,8 +187,8 @@ jobs:
             }
             $width = $rect.Right - $rect.Left
             $height = $rect.Bottom - $rect.Top
-            if ($width -lt 200 -or $height -lt 120) {
-              throw "Captured PDW window size is unexpectedly small: ${width}x${height}."
+            if ($width -lt 640 -or $height -lt 400) {
+              throw "Captured PDW main window size is unexpectedly small: ${width}x${height}."
             }
 
             $bitmap = New-Object System.Drawing.Bitmap($width, $height)
@@ -190,12 +204,53 @@ jobs:
 
             if (-not $captured) {
               $bitmap.Dispose()
-              throw "PrintWindow failed to capture the PDW top-level window."
+              throw "PrintWindow failed to capture the PDW main window."
+            }
+
+            # Reject the historical false-positive: PrintWindow can return TRUE
+            # from a non-interactive service session while producing an all-black
+            # or effectively uniform bitmap. Sample the image before accepting it.
+            $stepX = [Math]::Max(1, [int]($width / 40))
+            $stepY = [Math]::Max(1, [int]($height / 30))
+            $minBrightness = 255
+            $maxBrightness = 0
+            [long]$brightnessSum = 0
+            $samples = 0
+            for ($y = 0; $y -lt $height; $y += $stepY) {
+              for ($x = 0; $x -lt $width; $x += $stepX) {
+                $pixel = $bitmap.GetPixel($x, $y)
+                $brightness = [int](0.299 * $pixel.R + 0.587 * $pixel.G + 0.114 * $pixel.B)
+                if ($brightness -lt $minBrightness) { $minBrightness = $brightness }
+                if ($brightness -gt $maxBrightness) { $maxBrightness = $brightness }
+                $brightnessSum += $brightness
+                $samples++
+              }
+            }
+            $averageBrightness = if ($samples -gt 0) { [Math]::Round($brightnessSum / $samples, 2) } else { 0 }
+            $brightnessRange = $maxBrightness - $minBrightness
+
+            @(
+              "width=$width"
+              "height=$height"
+              "samples=$samples"
+              "min_brightness=$minBrightness"
+              "max_brightness=$maxBrightness"
+              "brightness_range=$brightnessRange"
+              "average_brightness=$averageBrightness"
+            ) | Set-Content -Path $validationPath -Encoding UTF8
+
+            if ($maxBrightness -lt 20) {
+              $bitmap.Dispose()
+              throw "Screenshot is effectively black (max brightness $maxBrightness). Interactive visual evidence is invalid."
+            }
+            if ($brightnessRange -lt 12) {
+              $bitmap.Dispose()
+              throw "Screenshot is effectively uniform (brightness range $brightnessRange). Interactive visual evidence is invalid."
             }
 
             $bitmap.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
             $bitmap.Dispose()
-            Write-Host "UI screenshot saved to $png (${width}x${height})."
+            Write-Host "Validated UI screenshot saved to $png (${width}x${height}, brightness range $brightnessRange)."
           }
           finally {
             if (-not $process.HasExited) {
@@ -211,6 +266,7 @@ jobs:
           path: |
             ui-smoke/pdw-main-window.png
             ui-smoke/window-diagnostics.txt
+            ui-smoke/screenshot-validation.txt
             build-ui/Release/PDW.exe
           if-no-files-found: warn
           retention-days: 30
