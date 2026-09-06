@@ -1015,6 +1015,32 @@ bool IsFilterDialog(HWND hwnd)
     return GetDlgItem(hwnd, IDC_FILTERS) != NULL;
 }
 
+bool IsThemeAwareDialog(HWND hwnd)
+{
+    return hwnd && (IsFilterDialog(hwnd) ||
+                    GetPropW(hwnd, L"PDW.ThemeAwareDialog") != NULL);
+}
+
+HBRUSH GetCurrentThemeWindowBrush()
+{
+    static HBRUSH darkBrush = CreateSolidBrush(
+        pdw::GetThemePalette(pdw::UiTheme::Dark).windowBackground);
+    static HBRUSH lightBrush = CreateSolidBrush(
+        pdw::GetThemePalette(pdw::UiTheme::Light).windowBackground);
+    return pdw::CurrentUiTheme() == pdw::UiTheme::Dark
+        ? darkBrush : lightBrush;
+}
+
+HBRUSH GetCurrentThemeControlBrush()
+{
+    static HBRUSH darkBrush = CreateSolidBrush(
+        pdw::GetThemePalette(pdw::UiTheme::Dark).controlBackground);
+    static HBRUSH lightBrush = CreateSolidBrush(
+        pdw::GetThemePalette(pdw::UiTheme::Light).controlBackground);
+    return pdw::CurrentUiTheme() == pdw::UiTheme::Dark
+        ? darkBrush : lightBrush;
+}
+
 COLORREF EnsureFilterListContrast(COLORREF color)
 {
     const int red = GetRValue(color);
@@ -1216,11 +1242,11 @@ void DrawModernFilterButton(const DRAWITEMSTRUCT* item)
 {
     if (!item || !item->hwndItem) return;
 
-    const bool mainFilter = IsFilterDialog(GetParent(item->hwndItem));
+    const bool themedDialog = IsThemeAwareDialog(GetParent(item->hwndItem));
     const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
 
     RECT rect = item->rcItem;
-    const COLORREF clearColor = mainFilter
+    const COLORREF clearColor = themedDialog
         ? palette.windowBackground : RGB(246, 249, 252);
     HBRUSH clear = CreateSolidBrush(clearColor);
     FillRect(item->hDC, &rect, clear);
@@ -1230,27 +1256,27 @@ void DrawModernFilterButton(const DRAWITEMSTRUCT* item)
     const bool pressed = (item->itemState & ODS_SELECTED) != 0;
     const bool primary = item->CtlID == IDC_FILTERADD || item->CtlID == IDOK;
 
-    COLORREF fill = mainFilter ? palette.controlBackground : RGB(255, 255, 255);
-    COLORREF border = mainFilter ? palette.border : RGB(205, 215, 226);
-    COLORREF textColor = mainFilter ? palette.textPrimary : RGB(35, 43, 52);
+    COLORREF fill = themedDialog ? palette.controlBackground : RGB(255, 255, 255);
+    COLORREF border = themedDialog ? palette.border : RGB(205, 215, 226);
+    COLORREF textColor = themedDialog ? palette.textPrimary : RGB(35, 43, 52);
     if (!enabled)
     {
-        fill = mainFilter ? palette.controlBackground : RGB(244, 246, 248);
-        border = mainFilter ? palette.divider : RGB(226, 231, 236);
-        textColor = mainFilter ? palette.textMuted : RGB(150, 157, 165);
+        fill = themedDialog ? palette.controlBackground : RGB(244, 246, 248);
+        border = themedDialog ? palette.divider : RGB(226, 231, 236);
+        textColor = themedDialog ? palette.textMuted : RGB(150, 157, 165);
     }
     else if (primary)
     {
-        fill = mainFilter
+        fill = themedDialog
             ? (pressed ? palette.accentPressed : palette.accent)
             : (pressed ? RGB(0, 95, 184) : RGB(0, 120, 212));
         border = fill;
-        textColor = mainFilter ? palette.selectionText : RGB(255, 255, 255);
+        textColor = themedDialog ? palette.selectionText : RGB(255, 255, 255);
     }
     else if (pressed)
     {
-        fill = mainFilter ? palette.controlHover : RGB(232, 240, 248);
-        border = mainFilter ? palette.accent : RGB(179, 201, 224);
+        fill = themedDialog ? palette.controlHover : RGB(232, 240, 248);
+        border = themedDialog ? palette.accent : RGB(179, 201, 224);
     }
 
     FillRoundedRect(item->hDC, rect, fill, border,
@@ -1531,24 +1557,29 @@ LRESULT CALLBACK ModernGroupBoxSubclassProc(HWND hwnd, UINT message, WPARAM wPar
             RECT client = {};
             GetClientRect(hwnd, &client);
 
-            const COLORREF card = RGB(255, 255, 255);
-            const COLORREF border = RGB(212, 221, 231);
-            const COLORREF title = RGB(45, 56, 68);
+            const bool themedDialog = IsThemeAwareDialog(GetParent(hwnd));
+            const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+            const COLORREF card = themedDialog
+                ? palette.cardBackground : RGB(255, 255, 255);
+            const COLORREF border = themedDialog
+                ? palette.border : RGB(212, 221, 231);
+            const COLORREF titleColor = themedDialog
+                ? palette.textPrimary : RGB(45, 56, 68);
             FillRoundedRect(hdc, client, card, border, ScaleForDpi(hwnd, 10));
 
             wchar_t label[96] = {};
             GetWindowTextW(hwnd, label, ARRAYSIZE(label));
             if (label[0])
             {
-                RECT text = client;
-                text.left += ScaleForDpi(hwnd, 12);
-                text.right -= ScaleForDpi(hwnd, 12);
-                text.top += ScaleForDpi(hwnd, 4);
-                text.bottom = text.top + ScaleForDpi(hwnd, 22);
+                RECT textRect = client;
+                textRect.left += ScaleForDpi(hwnd, 12);
+                textRect.right -= ScaleForDpi(hwnd, 12);
+                textRect.top += ScaleForDpi(hwnd, 4);
+                textRect.bottom = textRect.top + ScaleForDpi(hwnd, 22);
                 SetBkMode(hdc, TRANSPARENT);
-                SetTextColor(hdc, title);
+                SetTextColor(hdc, titleColor);
                 HGDIOBJ oldFont = SelectObject(hdc, GetHeaderFont());
-                DrawTextW(hdc, label, -1, &text,
+                DrawTextW(hdc, label, -1, &textRect,
                           DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
                 SelectObject(hdc, oldFont);
             }
@@ -1585,6 +1616,7 @@ void ShiftFilterEditChildren(HWND hwnd, int deltaY)
 
 void ConfigureModernFilterEditControls(HWND hwnd)
 {
+    const bool dark = pdw::CurrentUiTheme() == pdw::UiTheme::Dark;
     const int actionIds[] = {
         IDOK, IDCANCEL, IDC_FILTER_APPLY, IDC_FILTER_PREVIOUS,
         IDC_FILTER_NEXT, IDC_FILTERRESET,
@@ -1612,13 +1644,31 @@ void ConfigureModernFilterEditControls(HWND hwnd)
         wchar_t className[32] = {};
         if (GetClassNameW(child, className, ARRAYSIZE(className)) <= 0)
             continue;
-        if (lstrcmpiW(className, L"Button") != 0)
-            continue;
 
-        const LONG_PTR style = GetWindowLongPtr(child, GWL_STYLE);
-        if ((style & 0x0F) == BS_GROUPBOX)
-            SetWindowSubclass(child, ModernGroupBoxSubclassProc,
-                              kModernGroupBoxSubclassId, 0);
+        if (lstrcmpiW(className, L"Button") == 0)
+        {
+            const LONG_PTR style = GetWindowLongPtr(child, GWL_STYLE);
+            if ((style & 0x0F) == BS_GROUPBOX)
+            {
+                SetWindowSubclass(child, ModernGroupBoxSubclassProc,
+                                  kModernGroupBoxSubclassId, 0);
+            }
+            else if (!IsModernFilterEditButton(
+                         static_cast<UINT>(GetDlgCtrlID(child))))
+            {
+                SetWindowTheme(child,
+                               dark ? L"DarkMode_Explorer" : L"Explorer",
+                               NULL);
+            }
+        }
+        else if (lstrcmpiW(className, L"Edit") == 0 ||
+                 lstrcmpiW(className, L"ComboBox") == 0 ||
+                 lstrcmpiW(className, L"ListBox") == 0)
+        {
+            SetWindowTheme(child,
+                           dark ? L"DarkMode_Explorer" : L"Explorer",
+                           NULL);
+        }
     }
 
     HWND help = GetDlgItem(hwnd, IDC_FILTEREDITHELP);
@@ -1632,6 +1682,9 @@ void ConfigureModernFilterEditControls(HWND hwnd)
         exStyle &= ~static_cast<LONG_PTR>(WS_EX_CLIENTEDGE);
         SetWindowLongPtr(help, GWL_EXSTYLE, exStyle);
 
+        SetWindowTheme(help,
+                       dark ? L"DarkMode_Explorer" : L"Explorer",
+                       NULL);
         SetWindowPos(help, NULL, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                      SWP_FRAMECHANGED);
@@ -1692,43 +1745,40 @@ void PaintModernFilterEditDialog(HWND hwnd, HDC hdc)
 {
     RECT client = {};
     GetClientRect(hwnd, &client);
-    HBRUSH bg = GetDialogSurfaceBrush();
+    const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+    HBRUSH bg = GetCurrentThemeWindowBrush();
     FillRect(hdc, &client, bg);
 
     const int header = FilterEditHeaderOffset(hwnd);
     if (header <= 0) return;
 
-    wchar_t caption[128] = {};
-    GetWindowTextW(hwnd, caption, ARRAYSIZE(caption));
-    const wchar_t* title =
-        wcsstr(caption, L"Add") ? L"Add filter" :
-        (wcsstr(caption, L"multiple") ? L"Edit selected filters" : L"Edit filter");
-
     SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, RGB(24, 39, 58));
+    SetTextColor(hdc, palette.textPrimary);
     HGDIOBJ oldFont = SelectObject(hdc, GetTitleFont());
     RECT titleRect = {
         ScaleForDpi(hwnd, 14), ScaleForDpi(hwnd, 8),
         client.right - ScaleForDpi(hwnd, 14), ScaleForDpi(hwnd, 31)
     };
-    DrawTextW(hdc, title, -1, &titleRect,
+    DrawTextW(hdc, L"Filter toevoegen/bewerken", -1, &titleRect,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
     SelectObject(hdc, oldFont);
 
-    SetTextColor(hdc, RGB(91, 103, 116));
+    SetTextColor(hdc, palette.textSecondary);
     oldFont = SelectObject(hdc, GetDialogFont());
     RECT subtitle = {
         ScaleForDpi(hwnd, 14), ScaleForDpi(hwnd, 31),
         client.right - ScaleForDpi(hwnd, 14), header - ScaleForDpi(hwnd, 5)
     };
-    DrawTextW(hdc, L"Matching, notification and output settings.", -1, &subtitle,
+    DrawTextW(hdc,
+              L"Stel de filtervoorwaarden, meldingen en uitvoer voor dit filter in.",
+              -1, &subtitle,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX |
               DT_END_ELLIPSIS);
     SelectObject(hdc, oldFont);
 
     DrawLine(hdc, ScaleForDpi(hwnd, 12), header - 1,
              client.right - ScaleForDpi(hwnd, 12), header - 1,
-             RGB(216, 224, 233));
+             palette.divider);
 }
 
 LRESULT CALLBACK FilterEditWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
@@ -1753,9 +1803,21 @@ LRESULT CALLBACK FilterEditWindowSubclassProc(HWND hwnd, UINT message, WPARAM wP
         case WM_CTLCOLORBTN:
         {
             HDC hdc = reinterpret_cast<HDC>(wParam);
+            const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
             SetBkMode(hdc, TRANSPARENT);
-            SetTextColor(hdc, RGB(40, 48, 58));
-            return reinterpret_cast<LRESULT>(GetDialogSurfaceBrush());
+            SetTextColor(hdc, palette.textPrimary);
+            return reinterpret_cast<LRESULT>(GetCurrentThemeWindowBrush());
+        }
+
+        case WM_CTLCOLOREDIT:
+        case WM_CTLCOLORLISTBOX:
+        {
+            HDC hdc = reinterpret_cast<HDC>(wParam);
+            const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+            SetBkMode(hdc, OPAQUE);
+            SetTextColor(hdc, palette.textPrimary);
+            SetBkColor(hdc, palette.controlBackground);
+            return reinterpret_cast<LRESULT>(GetCurrentThemeControlBrush());
         }
 
         case WM_DRAWITEM:
@@ -1771,8 +1833,14 @@ LRESULT CALLBACK FilterEditWindowSubclassProc(HWND hwnd, UINT message, WPARAM wP
             break;
         }
 
+        case WM_THEMECHANGED:
+            ConfigureModernFilterEditControls(hwnd);
+            InvalidateRect(hwnd, NULL, TRUE);
+            break;
+
         case WM_NCDESTROY:
             RemovePropW(hwnd, L"PDW.FilterEdit.HeaderOffset");
+            RemovePropW(hwnd, L"PDW.ThemeAwareDialog");
             RemoveWindowSubclass(hwnd, FilterEditWindowSubclassProc, subclassId);
             break;
     }
@@ -1783,6 +1851,14 @@ LRESULT CALLBACK FilterEditWindowSubclassProc(HWND hwnd, UINT message, WPARAM wP
 void EnableModernFilterEditDialog(HWND hwnd)
 {
     if (!IsFilterEditDialog(hwnd)) return;
+
+    SetPropW(hwnd, L"PDW.ThemeAwareDialog",
+             reinterpret_cast<HANDLE>(static_cast<INT_PTR>(1)));
+    const BOOL dark = pdw::CurrentUiTheme() == pdw::UiTheme::Dark ? TRUE : FALSE;
+    DwmSetWindowAttribute(hwnd, kDwmUseImmersiveDarkMode, &dark, sizeof(dark));
+    SetWindowTheme(hwnd,
+                   dark ? L"DarkMode_Explorer" : L"Explorer",
+                   NULL);
 
     SetWindowSubclass(hwnd, FilterEditWindowSubclassProc,
                       kFilterEditWindowSubclassId, 0);
