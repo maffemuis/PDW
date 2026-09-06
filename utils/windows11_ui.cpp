@@ -43,6 +43,9 @@ const UINT_PTR kCustomAudioWindowSubclassId = 0x5044573E;
 const UINT_PTR kStatisticsWindowSubclassId = 0x5044573F;
 const UINT_PTR kColorsWindowSubclassId = 0x50445740;
 const UINT kEnableModernShellMessage = WM_APP + 0x51;
+// Legacy timer IDs are private to PDW.cpp; mirror only the two main-window
+// timers the modern shell observes. PDW_TIMER=101, SECOND_TIMER=103.
+const WPARAM kLegacyDecodeTimer = 101;
 const WPARAM kLegacySecondTimer = 103;
 const int kSettingsPopupCommand = 50001;
 const int kResumeMonitorCommand = 50002;
@@ -4608,7 +4611,7 @@ LRESULT CALLBACK MainWindowSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
         case WM_TIMER:
             // RX quality changes at one-second cadence, while the original
             // signal indicator state changes on the 100 ms decoder timer.
-            if (wParam == kLegacySecondTimer || wParam == PDW_TIMER)
+            if (wParam == kLegacySecondTimer || wParam == kLegacyDecodeTimer)
                 DrawModernWorkspace(hwnd);
             break;
 
