@@ -149,6 +149,24 @@ if( BUILD_TESTING )
       COMMAND pdw_ui_theme_test
   )
 
+  # Keep webhook/network behavior behind a decoder-independent boundary.
+  # This target proves event normalization, JSON escaping, HTTPS-only policy,
+  # bounded enqueue behavior and async retry/credential lookup without doing
+  # network I/O in a decoder thread.
+  add_executable( pdw_integration_boundary_test
+      tests/core/integration_boundary_test.cpp
+      core/decoded_message.cpp
+      core/integration_event.cpp
+      core/integration_worker.cpp
+  )
+  target_include_directories( pdw_integration_boundary_test PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/core
+  )
+  add_test(
+      NAME pdw_integration_boundary
+      COMMAND pdw_integration_boundary_test
+  )
+
   add_subdirectory( tests )
 
   if( MSVC )
