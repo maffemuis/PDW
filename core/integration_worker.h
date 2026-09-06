@@ -32,6 +32,7 @@ struct IntegrationWorkerOptions
     IntegrationWorkerOptions();
 
     std::size_t queue_capacity;
+    std::size_t max_payload_bytes;
     unsigned int max_attempts;
     unsigned long request_timeout_ms;
     unsigned long initial_backoff_ms;
