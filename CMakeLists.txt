@@ -150,6 +150,25 @@ if( BUILD_TESTING )
       COMMAND pdw_webhook_transport_policy_test
   )
 
+  add_executable( pdw_webhook_runtime_test
+      tests/core/webhook_runtime_test.cpp
+      core/integration_worker.cpp
+      utils/webhook_runtime.cpp
+      utils/webhook_transport_winhttp.cpp
+  )
+  target_include_directories( pdw_webhook_runtime_test PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/core
+      ${CMAKE_CURRENT_SOURCE_DIR}/utils
+  )
+  target_link_libraries( pdw_webhook_runtime_test
+      Winhttp.lib
+      Advapi32.lib
+  )
+  add_test(
+      NAME pdw_webhook_runtime
+      COMMAND pdw_webhook_runtime_test
+  )
+
   add_subdirectory( tests )
 
   if( MSVC )
