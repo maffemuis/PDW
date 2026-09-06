@@ -5,6 +5,14 @@
 
 namespace pdw
 {
+namespace
+{
+const std::size_t kMaxQueueCapacity = 4096;
+const std::size_t kMaxPayloadBytes = 8 * 1024 * 1024;
+const std::size_t kMaxOutstandingBytes = 64 * 1024 * 1024;
+const unsigned int kMaxAttempts = 10;
+const unsigned long kMaxBackoffMs = 60000UL;
+}
 
 IntegrationWorkerOptions::IntegrationWorkerOptions()
     : queue_capacity(256),
@@ -53,10 +61,14 @@ bool AsyncIntegrationWorker::Start()
     std::lock_guard<std::mutex> lock(mutex_);
     if (running_) return true;
     if (!IsSafeHttpsEndpoint(endpoint_https_)) return false;
-    if (options_.queue_capacity == 0 || options_.max_payload_bytes == 0 || options_.max_outstanding_bytes == 0 || options_.max_attempts == 0) return false;
+    if (options_.queue_capacity == 0 || options_.queue_capacity > kMaxQueueCapacity) return false;
+    if (options_.max_payload_bytes == 0 || options_.max_payload_bytes > kMaxPayloadBytes) return false;
+    if (options_.max_outstanding_bytes == 0 || options_.max_outstanding_bytes > kMaxOutstandingBytes) return false;
+    if (options_.max_attempts == 0 || options_.max_attempts > kMaxAttempts) return false;
     if (options_.max_payload_bytes > options_.max_outstanding_bytes) return false;
     if (options_.request_timeout_ms == 0 || options_.request_timeout_ms > 120000UL) return false;
     if (options_.initial_backoff_ms > options_.max_backoff_ms) return false;
+    if (options_.initial_backoff_ms > kMaxBackoffMs || options_.max_backoff_ms > kMaxBackoffMs) return false;
 
     stopping_ = false;
     outstanding_bytes_ = 0;
