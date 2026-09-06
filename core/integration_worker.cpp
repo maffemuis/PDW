@@ -9,6 +9,7 @@ namespace pdw
 IntegrationWorkerOptions::IntegrationWorkerOptions()
     : queue_capacity(256),
       max_payload_bytes(1024 * 1024),
+      max_outstanding_bytes(8 * 1024 * 1024),
       max_attempts(3),
       request_timeout_ms(5000),
       initial_backoff_ms(250),
@@ -26,6 +27,7 @@ AsyncIntegrationWorker::AsyncIntegrationWorker(IWebhookTransport& transport,
       credential_provider_(credential_provider),
       running_(false),
       stopping_(false),
+      outstanding_bytes_(0),
       dropped_(0),
       delivered_(0),
       failed_(0)
@@ -51,11 +53,13 @@ bool AsyncIntegrationWorker::Start()
     std::lock_guard<std::mutex> lock(mutex_);
     if (running_) return true;
     if (!IsSafeHttpsEndpoint(endpoint_https_)) return false;
-    if (options_.queue_capacity == 0 || options_.max_payload_bytes == 0 || options_.max_attempts == 0) return false;
+    if (options_.queue_capacity == 0 || options_.max_payload_bytes == 0 || options_.max_outstanding_bytes == 0 || options_.max_attempts == 0) return false;
+    if (options_.max_payload_bytes > options_.max_outstanding_bytes) return false;
     if (options_.request_timeout_ms == 0 || options_.request_timeout_ms > 120000UL) return false;
     if (options_.initial_backoff_ms > options_.max_backoff_ms) return false;
 
     stopping_ = false;
+    outstanding_bytes_ = 0;
     running_ = true;
     thread_ = std::thread(&AsyncIntegrationWorker::Run, this);
     return true;
@@ -96,7 +100,13 @@ bool AsyncIntegrationWorker::TryEnqueue(const std::string& json_body)
             ++dropped_;
             return false;
         }
+        if (outstanding_bytes_ > options_.max_outstanding_bytes - json_body.size())
+        {
+            ++dropped_;
+            return false;
+        }
         queue_.push_back(json_body);
+        outstanding_bytes_ += json_body.size();
     }
     wake_.notify_one();
     return true;
@@ -106,6 +116,12 @@ std::size_t AsyncIntegrationWorker::QueueSize() const
 {
     std::lock_guard<std::mutex> lock(mutex_);
     return queue_.size();
+}
+
+std::size_t AsyncIntegrationWorker::OutstandingBytes() const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return outstanding_bytes_;
 }
 
 std::size_t AsyncIntegrationWorker::DroppedCount() const
@@ -141,6 +157,7 @@ void AsyncIntegrationWorker::Run()
 
         const bool delivered = DeliverWithRetry(body);
         std::lock_guard<std::mutex> lock(mutex_);
+        outstanding_bytes_ -= body.size();
         if (delivered) ++delivered_;
         else ++failed_;
     }
