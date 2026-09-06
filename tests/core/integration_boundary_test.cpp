@@ -89,6 +89,7 @@ int main()
 
     pdw::IntegrationWorkerOptions options;
     options.queue_capacity = 2;
+    options.max_payload_bytes = 1024;
     options.max_attempts = 3;
     options.request_timeout_ms = 3210;
     options.initial_backoff_ms = 1;
@@ -135,6 +136,27 @@ int main()
     assert(missing_credential_reads == 1);
     assert(missing_credential_transport.calls == 0);
     assert(missing_credential_worker.DeliveredCount() == 0);
+
+    FakeTransport oversized_payload_transport;
+    pdw::IntegrationWorkerOptions payload_options = options;
+    payload_options.max_payload_bytes = 4;
+    pdw::AsyncIntegrationWorker oversized_payload_worker(
+        oversized_payload_transport, payload_options, "https://example.test/hook",
+        pdw::AsyncIntegrationWorker::CredentialProvider());
+    assert(oversized_payload_worker.Start());
+    assert(oversized_payload_worker.TryEnqueue("1234"));
+    assert(!oversized_payload_worker.TryEnqueue("12345"));
+    oversized_payload_worker.Stop();
+    assert(oversized_payload_worker.DroppedCount() == 1);
+    assert(oversized_payload_transport.calls == 1);
+
+    FakeTransport zero_payload_limit_transport;
+    pdw::IntegrationWorkerOptions zero_payload_options = options;
+    zero_payload_options.max_payload_bytes = 0;
+    pdw::AsyncIntegrationWorker zero_payload_worker(
+        zero_payload_limit_transport, zero_payload_options, "https://example.test/hook",
+        pdw::AsyncIntegrationWorker::CredentialProvider());
+    assert(!zero_payload_worker.Start());
 
     FakeTransport zero_timeout_transport;
     pdw::IntegrationWorkerOptions zero_timeout_options = options;
