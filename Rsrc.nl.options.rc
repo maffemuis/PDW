@@ -1,0 +1,75 @@
+// Dutch (Netherlands) Windows 11 presentation resources for general and screen options.
+// Keep all control IDs aligned with Rsrc.rc; presentation/localization only.
+
+#include "resrc1.h"
+#include "windows.h"
+#include "headers\resource.h"
+
+LANGUAGE LANG_DUTCH, SUBLANG_DUTCH
+#pragma code_page(65001)
+
+GENERALOPTIONSDLGBOX DIALOGEX 10, 10, 420, 238
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "PDW - Algemene opties"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "Algemene instellingen voor berichten, logbestanden en afsluiten.",IDC_STATIC,16,14,388,12
+    GROUPBOX        "Berichten",IDC_STATIC,16,38,388,84
+    CONTROL         "Dubbele berichten blokkeren als:",IDC_BLOCKDUPLICATE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,28,55,148,12
+    COMBOBOX        IDC_BLOCKDUPOPTION,180,52,210,70,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Geblokkeerde berichten opslaan in 'blocked.txt'",IDC_BLOCKEDTXT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,28,77,210,12
+    LTEXT           "Blokkeren bij herhaling binnen",IDC_STATIC,246,79,112,10
+    EDITTEXT        IDC_BLOCKDUPTIMER,360,76,30,18,ES_CENTER | ES_AUTOHSCROLL | ES_NUMBER | WS_TABSTOP
+    LTEXT           "min.",IDC_STATIC,392,79,22,10
+    CONTROL         "Teken '»' omzetten naar nieuwe regel",IDC_LINEFEEDS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,28,99,176,12
+    CONTROL         "Berichten scheiden/groeperen met lege regel",IDC_SEPARATOR,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,216,99,178,12
+
+    GROUPBOX        "Datum en logbestanden",IDC_STATIC,16,132,388,62
+    LTEXT           "Datumformaat als logbestandsnaam:",IDC_STATIC,28,150,146,10
+    CONTROL         "050324.LOG",IDC_MONTHNUMBER,"Button",BS_AUTORADIOBUTTON | WS_TABSTOP,180,148,76,12
+    CONTROL         "05mar24.LOG",IDC_MONTHNUMBER2,"Button",BS_AUTORADIOBUTTON | WS_TABSTOP,264,148,82,12
+    LTEXT           "Datumformaat op scherm/in logbestanden:",IDC_STATIC,28,172,160,10
+    COMBOBOX        IDC_DATEFORMAT,192,169,86,70,CBS_DROPDOWNLIST | CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Afsluiten bevestigen",IDC_CONFIRMEXIT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,292,171,102,12
+
+    LTEXT           "Map voor logbestanden:",IDC_LOGFILEPATHTEXT,16,204,96,10
+    LTEXT           "",IDC_LOGFILEPATH,116,201,174,18,0,WS_EX_CLIENTEDGE
+    PUSHBUTTON      "Bladeren...",IDC_LOGFILEPATHBROWSE,296,201,56,18
+    PUSHBUTTON      "Standaard",IDC_LOGFILEPATHDEFAULT,356,201,48,18
+    DEFPUSHBUTTON   "OK",IDOK,266,224,66,20
+    PUSHBUTTON      "Annuleren",IDCANCEL,338,224,66,20
+END
+
+SCREENOPTIONSDLGBOX DIALOGEX 10, 10, 470, 214
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "PDW - Schermopties"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "Kies welke gegevenskolommen en FLEX-groepsopties op het scherm worden gebruikt.",IDC_STATIC,16,14,438,12
+    GROUPBOX        "Kolommen op het scherm",IDC_STATIC,16,38,438,66
+    LTEXT           "Kolom 1",IDC_STATIC,28,55,48,10
+    COMBOBOX        801,24,69,54,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Kolom 2",IDC_STATIC,88,55,48,10
+    COMBOBOX        802,84,69,54,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Kolom 3",IDC_STATIC,148,55,48,10
+    COMBOBOX        803,144,69,54,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Kolom 4",IDC_STATIC,208,55,48,10
+    COMBOBOX        804,204,69,54,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Kolom 5",IDC_STATIC,268,55,48,10
+    COMBOBOX        805,264,69,54,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Kolom 6",IDC_STATIC,328,55,48,10
+    COMBOBOX        806,324,69,54,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Kolom 7",IDC_STATIC,388,55,48,10
+    COMBOBOX        807,384,69,54,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    GROUPBOX        "FLEX-groepsweergave",IDC_STATIC,16,114,438,62
+    CONTROL         "FLEX-groepsmodus inschakelen (tijd/datum/adres/bericht)",IDC_FLEXGROUPMODE,"Button",BS_AUTOCHECKBOX | BS_MULTILINE | WS_DISABLED | WS_TABSTOP,28,130,206,22
+    CONTROL         "Ook loggen als FLEX-groepsmodus",IDC_FGM_LOGGING,"Button",BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,28,154,180,12
+    CONTROL         "Opeenvolgende individuele berichten als groep tonen",IDC_FGM_COMBINE,"Button",BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,246,130,198,12
+    CONTROL         "Groepscodes verbergen bij succesvol omgezette groepsoproepen",IDC_FGM_HIDEGROUPCODES,"Button",BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,246,150,198,22
+
+    DEFPUSHBUTTON   "OK",IDOK,316,184,66,20
+    PUSHBUTTON      "Annuleren",IDCANCEL,388,184,66,20
+END
