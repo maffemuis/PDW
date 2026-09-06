@@ -35,6 +35,31 @@ public:
     std::mutex mutex;
 };
 
+class SlowTransport : public pdw::IWebhookTransport
+{
+public:
+    explicit SlowTransport(unsigned long delay_ms) : delay_ms_(delay_ms), calls_(0) {}
+
+    bool PostJson(const pdw::WebhookDeliveryRequest&) override
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms_));
+        std::lock_guard<std::mutex> lock(mutex_);
+        ++calls_;
+        return true;
+    }
+
+    int Calls() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return calls_;
+    }
+
+private:
+    unsigned long delay_ms_;
+    mutable std::mutex mutex_;
+    int calls_;
+};
+
 bool WaitForDelivered(pdw::AsyncIntegrationWorker& worker, std::size_t count)
 {
     for (int i = 0; i < 100; ++i)
@@ -90,6 +115,7 @@ int main()
     pdw::IntegrationWorkerOptions options;
     options.queue_capacity = 2;
     options.max_payload_bytes = 1024;
+    options.max_outstanding_bytes = 4096;
     options.max_attempts = 3;
     options.request_timeout_ms = 3210;
     options.initial_backoff_ms = 1;
@@ -117,6 +143,7 @@ int main()
     assert(transport.requests[0].json_body == json);
     assert(transport.requests[0].bearer_token == "secret-token");
     assert(transport.requests[0].timeout_ms == 3210);
+    assert(worker.OutstandingBytes() == 0);
     assert(worker.FailedCount() == 0);
 
     FakeTransport missing_credential_transport;
@@ -135,6 +162,7 @@ int main()
     missing_credential_worker.Stop();
     assert(missing_credential_reads == 1);
     assert(missing_credential_transport.calls == 0);
+    assert(missing_credential_worker.OutstandingBytes() == 0);
     assert(missing_credential_worker.DeliveredCount() == 0);
 
     FakeTransport oversized_payload_transport;
@@ -150,6 +178,24 @@ int main()
     assert(oversized_payload_worker.DroppedCount() == 1);
     assert(oversized_payload_transport.calls == 1);
 
+    SlowTransport outstanding_transport(100);
+    pdw::IntegrationWorkerOptions outstanding_options = options;
+    outstanding_options.queue_capacity = 4;
+    outstanding_options.max_payload_bytes = 4;
+    outstanding_options.max_outstanding_bytes = 4;
+    pdw::AsyncIntegrationWorker outstanding_worker(
+        outstanding_transport, outstanding_options, "https://example.test/hook",
+        pdw::AsyncIntegrationWorker::CredentialProvider());
+    assert(outstanding_worker.Start());
+    assert(outstanding_worker.TryEnqueue("1234"));
+    assert(outstanding_worker.OutstandingBytes() == 4);
+    assert(!outstanding_worker.TryEnqueue("1"));
+    assert(outstanding_worker.DroppedCount() == 1);
+    assert(WaitForDelivered(outstanding_worker, 1));
+    assert(outstanding_worker.OutstandingBytes() == 0);
+    outstanding_worker.Stop();
+    assert(outstanding_transport.Calls() == 1);
+
     FakeTransport zero_payload_limit_transport;
     pdw::IntegrationWorkerOptions zero_payload_options = options;
     zero_payload_options.max_payload_bytes = 0;
@@ -157,6 +203,23 @@ int main()
         zero_payload_limit_transport, zero_payload_options, "https://example.test/hook",
         pdw::AsyncIntegrationWorker::CredentialProvider());
     assert(!zero_payload_worker.Start());
+
+    FakeTransport zero_outstanding_limit_transport;
+    pdw::IntegrationWorkerOptions zero_outstanding_options = options;
+    zero_outstanding_options.max_outstanding_bytes = 0;
+    pdw::AsyncIntegrationWorker zero_outstanding_worker(
+        zero_outstanding_limit_transport, zero_outstanding_options, "https://example.test/hook",
+        pdw::AsyncIntegrationWorker::CredentialProvider());
+    assert(!zero_outstanding_worker.Start());
+
+    FakeTransport impossible_limits_transport;
+    pdw::IntegrationWorkerOptions impossible_limits_options = options;
+    impossible_limits_options.max_payload_bytes = 5;
+    impossible_limits_options.max_outstanding_bytes = 4;
+    pdw::AsyncIntegrationWorker impossible_limits_worker(
+        impossible_limits_transport, impossible_limits_options, "https://example.test/hook",
+        pdw::AsyncIntegrationWorker::CredentialProvider());
+    assert(!impossible_limits_worker.Start());
 
     FakeTransport zero_timeout_transport;
     pdw::IntegrationWorkerOptions zero_timeout_options = options;
