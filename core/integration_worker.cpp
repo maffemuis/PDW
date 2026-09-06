@@ -72,9 +72,6 @@ void AsyncIntegrationWorker::Stop()
         if (!running_) return;
         stopping_ = true;
 
-        // Shutdown is fail-open: do not drain an arbitrary webhook backlog.
-        // Keep only a delivery already in flight; queued work is discarded so
-        // Stop() latency does not grow with queue depth or retry policy.
         while (!queue_.empty())
         {
             outstanding_bytes_ -= queue_.front().size();
@@ -178,26 +175,41 @@ bool AsyncIntegrationWorker::DeliverWithRetry(const std::string& json_body)
     unsigned long backoff_ms = options_.initial_backoff_ms;
     for (unsigned int attempt = 0; attempt < options_.max_attempts; ++attempt)
     {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stopping_) return false;
+        }
+
         WebhookDeliveryRequest request;
         request.endpoint_https = endpoint_https_;
         request.json_body = json_body;
         request.timeout_ms = options_.request_timeout_ms;
         if (credential_provider_)
         {
-            request.bearer_token = credential_provider_();
-            // A configured credential provider must yield a token. Never
-            // downgrade an authenticated webhook configuration to an
-            // unauthenticated network request when Credential Manager is
-            // unavailable or the target entry is missing.
+            try
+            {
+                request.bearer_token = credential_provider_();
+            }
+            catch (...)
+            {
+                return false;
+            }
             if (request.bearer_token.empty()) return false;
         }
 
-        if (transport_.PostJson(request)) return true;
+        bool posted = false;
+        try
+        {
+            posted = transport_.PostJson(request);
+        }
+        catch (...)
+        {
+            posted = false;
+        }
+
+        if (posted) return true;
         if (attempt + 1 >= options_.max_attempts) return false;
 
-        // A shutdown must not wait through retry backoff or start another
-        // network attempt. The currently executing transport call is the only
-        // operation Stop() is allowed to wait for.
         {
             std::unique_lock<std::mutex> lock(mutex_);
             if (stopping_) return false;
