@@ -6,29 +6,22 @@ cmake_minimum_required( VERSION 3.15 )
 project( PDW )
 include( CTest )
 
-# Keep release artifacts portable by linking the Microsoft C/C++ runtime
-# statically. This avoids requiring MSVCP140.dll / VCRUNTIME140.dll to be
-# preinstalled on the target Windows system.
 if( MSVC )
   set( CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" )
 endif()
 
-# Enforce Win32 (x86)
 if( CMAKE_SIZEOF_VOID_P EQUAL 8 )
   message( FATAL_ERROR "PDW must be built as 32-bit (Win32). Use -A Win32 with CMake." )
 endif()
 
-# Project version number
 set( PDW_VERSION_MAJOR 3 )
 set( PDW_VERSION_MINOR 1 )
 set( PDW_VERSION_MICRO 0 )
 
-# Set base variables
 set( PDW_GFXS )
 set( PDW_INCLUDES )
 set( PWD_SRCS )
 
-# Subdirectories to go to
 add_subdirectory( core )
 add_subdirectory( GFX )
 add_subdirectory( Headers )
@@ -36,18 +29,15 @@ add_subdirectory( utils )
 include_directories( "${CMAKE_CURRENT_SOURCE_DIR}/openssl-3.5.5/include" )
 link_directories( "${CMAKE_CURRENT_SOURCE_DIR}/openssl-3.5.5/lib" )
 
-# Microsoft Visual Studio Specific definitions
 if( MSVC )
   add_definitions( "-D_CRT_SECURE_NO_WARNINGS" )
 endif( MSVC )
 
-# Include Files
 set( PDW_INCLUDES
         ${PDW_INCLUDES}
         resrc1.h
 )
 
-# Source Files
 set( PDW_SRCS
         ${PDW_SRCS}
         Flex.cpp
@@ -79,53 +69,34 @@ set( PDW_SRCS
         sound_in.cpp
 )
 
-# Keep the legacy ShowMessage implementation untouched inside Misc.cpp.
-# Other translation units include misc.h and are routed through the
-# opt-in preservation observation wrapper.
 set_source_files_properties( Misc.cpp PROPERTIES
         COMPILE_DEFINITIONS PDW_SHOWMESSAGE_IMPLEMENTATION
 )
-
-# Keep the legacy GDI title-bar implementation intact under internal names.
-# A small startup guard prevents Windows 11 re-entrant paints from entering
-# the layout code before cxChar/cyChar have been initialized.
 set_source_files_properties( Gfx.cpp PROPERTIES
         COMPILE_DEFINITIONS "DrawTitleBarGfx=LegacyDrawTitleBarGfx;SetMessageItemPositionsWidth=LegacySetMessageItemPositionsWidth"
 )
-
-# Keep the legacy WinMM Start_Capturing implementation intact and expose it
-# under an internal name. The preservation adapter provides Start_Capturing()
-# and delegates here unless replay mode was explicitly requested.
 set_source_files_properties( sound_in.cpp PROPERTIES
         COMPILE_DEFINITIONS "Start_Capturing=LegacyStart_Capturing"
 )
-
-# Keep the legacy InitApplication implementation intact under an internal
-# name. A tiny preservation wrapper intercepts only explicit one-shot replay
-# before INI loading, window-class registration or other GUI startup work.
 set_source_files_properties( Initapp.cpp PROPERTIES
         COMPILE_DEFINITIONS "InitApplication=LegacyInitApplication"
 )
-
-# Keep the large legacy profile loader intact and expose it under an internal
-# name. startup_defaults.cpp handles only clean-install bootstrap/defaults and
-# then delegates to the original implementation.
 set_source_files_properties( PDW.cpp PROPERTIES
         COMPILE_DEFINITIONS "GetPrivateProfileSettings=LegacyGetPrivateProfileSettings"
 )
 
-# Create executable
 add_executable( PDW WIN32
         ${PDW_INCLUDES}
         ${PDW_SRCS}
 )
 
-# Required libraries
 target_link_libraries( PDW
         Comctl32.lib
         Dwmapi.lib
         UxTheme.lib
         Winmm.lib
+        Winhttp.lib
+        Advapi32.lib
         Ws2_32.lib
         libssl_static.lib
         libcrypto_static.lib
@@ -135,8 +106,6 @@ target_link_libraries( PDW
 )
 
 if( BUILD_TESTING )
-  # Theme selection is deliberately isolated from HWND/GDI rendering so its
-  # dark-default and persistence contract can regress independently.
   add_executable( pdw_ui_theme_test
       tests/utils/ui_theme_test.cpp
       utils/ui_theme.cpp
@@ -149,10 +118,6 @@ if( BUILD_TESTING )
       COMMAND pdw_ui_theme_test
   )
 
-  # Keep webhook/network behavior behind a decoder-independent boundary.
-  # This target proves event normalization, JSON escaping, HTTPS-only policy,
-  # bounded enqueue behavior and async retry/credential lookup without doing
-  # network I/O in a decoder thread.
   add_executable( pdw_integration_boundary_test
       tests/core/integration_boundary_test.cpp
       core/decoded_message.cpp
@@ -165,6 +130,24 @@ if( BUILD_TESTING )
   add_test(
       NAME pdw_integration_boundary
       COMMAND pdw_integration_boundary_test
+  )
+
+  add_executable( pdw_webhook_transport_policy_test
+      tests/core/webhook_transport_policy_test.cpp
+      core/integration_worker.cpp
+      utils/webhook_transport_winhttp.cpp
+  )
+  target_include_directories( pdw_webhook_transport_policy_test PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/core
+      ${CMAKE_CURRENT_SOURCE_DIR}/utils
+  )
+  target_link_libraries( pdw_webhook_transport_policy_test
+      Winhttp.lib
+      Advapi32.lib
+  )
+  add_test(
+      NAME pdw_webhook_transport_policy
+      COMMAND pdw_webhook_transport_policy_test
   )
 
   add_subdirectory( tests )
