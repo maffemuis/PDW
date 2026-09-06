@@ -18,6 +18,11 @@ int main()
     assert(!pdw::WinHttpWebhookTransport::IsSafeCredentialTarget(L""));
     assert(!pdw::WinHttpWebhookTransport::IsSafeCredentialTarget(L"PDW/Webhook\nInjected"));
 
+    const std::size_t max_body = 8u * 1024u * 1024u;
+    assert(pdw::WinHttpWebhookTransport::IsSafeBodySize(0));
+    assert(pdw::WinHttpWebhookTransport::IsSafeBodySize(max_body));
+    assert(!pdw::WinHttpWebhookTransport::IsSafeBodySize(max_body + 1));
+
     pdw::WebhookRuntimeConfig disabled;
     assert(disabled.IsValid());
 
