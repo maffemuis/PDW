@@ -6,6 +6,8 @@
 namespace pdw {
 namespace {
 
+UiTheme g_currentTheme = UiTheme::Dark;
+
 bool EqualsIgnoreCase(const char* left, const char* right)
 {
     if (!left || !right) return false;
@@ -92,6 +94,45 @@ UiTheme ParseUiTheme(const char* value, UiTheme fallback)
 const char* UiThemeIniValue(UiTheme theme)
 {
     return theme == UiTheme::Light ? "light" : "dark";
+}
+
+UiTheme LoadUiThemeSetting(const char* section, const char* iniPath)
+{
+    char value[32] = {};
+    if (!section || !*section || !iniPath || !*iniPath)
+    {
+        g_currentTheme = DefaultUiTheme();
+        return g_currentTheme;
+    }
+
+    GetPrivateProfileStringA(section, "UITheme", "", value,
+                             static_cast<DWORD>(sizeof(value)), iniPath);
+    g_currentTheme = ParseUiTheme(value, DefaultUiTheme());
+    return g_currentTheme;
+}
+
+bool SaveUiThemeSetting(UiTheme theme, const char* section, const char* iniPath)
+{
+    if (!section || !*section || !iniPath || !*iniPath) return false;
+    if (!WritePrivateProfileStringA(section, "UITheme", UiThemeIniValue(theme), iniPath))
+        return false;
+    g_currentTheme = theme;
+    return true;
+}
+
+void SetCurrentUiTheme(UiTheme theme)
+{
+    g_currentTheme = theme;
+}
+
+UiTheme CurrentUiTheme()
+{
+    return g_currentTheme;
+}
+
+const ThemePalette& CurrentThemePalette()
+{
+    return GetThemePalette(g_currentTheme);
 }
 
 const ThemePalette& GetThemePalette(UiTheme theme)
