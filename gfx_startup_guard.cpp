@@ -17,6 +17,7 @@
 #include "utils\windows11_ui.h"
 
 void LegacyDrawTitleBarGfx(HWND hwnd);
+void LegacyDrawPaneLabels(HWND hwnd, int pane);
 void LegacySetMessageItemPositionsWidth();
 
 void DrawTitleBarGfx(HWND hwnd)
@@ -28,6 +29,20 @@ void DrawTitleBarGfx(HWND hwnd)
         return;
     }
     LegacyDrawTitleBarGfx(hwnd);
+}
+
+void DrawPaneLabels(HWND hwnd, int pane)
+{
+    if (!hwnd || cxChar == 0 || cyChar == 0) return;
+    if (pdw::IsWindows11ChromeEnabled())
+    {
+        // The modern shell owns pane headers, the live si_index meter and the
+        // separate dRX_Quality percentage. Suppress every legacy pane-label
+        // paint, including the old sigind bitmap path reached by SECOND_TIMER.
+        pdw::EnsureWindows11PaneStyle();
+        return;
+    }
+    LegacyDrawPaneLabels(hwnd, pane);
 }
 
 void SetMessageItemPositionsWidth()
