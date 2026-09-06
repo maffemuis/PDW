@@ -1,0 +1,34 @@
+name: Apply dark-light main UI theme once
+
+on:
+  push:
+    branches:
+      - modernization/windows11-ui
+    paths:
+      - .github/workflows/apply-main-ui-theme-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: modernization/windows11-ui
+          fetch-depth: 0
+
+      - name: Apply bounded theme wiring
+        shell: cmd
+        run: python .github\scripts\apply_main_ui_theme.py
+
+      - name: Commit renderer theme wiring
+        shell: cmd
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add utils/windows11_ui.cpp utils/windows11_pane_skin.cpp
+          git commit -m "Wire dark-light theme into main UI"
+          git push origin HEAD:modernization/windows11-ui
