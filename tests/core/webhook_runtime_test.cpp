@@ -64,6 +64,7 @@ int main()
     pdw::WebhookRuntimeConfig disabled;
     assert(runtime.ApplyConfig(disabled));
     assert(!runtime.IsEnabled());
+    assert(runtime.OutstandingBytes() == 0);
     assert(!runtime.TryEnqueue("{\"event\":1}"));
 
     pdw::WebhookRuntimeConfig invalid;
@@ -72,6 +73,7 @@ int main()
     invalid.credential_target = L"PDW/Webhook/test";
     assert(!runtime.ApplyConfig(invalid));
     assert(!runtime.IsEnabled());
+    assert(runtime.OutstandingBytes() == 0);
 
     pdw::WebhookRuntimeConfig valid;
     valid.enabled = true;
@@ -87,7 +89,9 @@ int main()
 
     assert(runtime.ApplyConfig(valid, options));
     assert(runtime.IsEnabled());
+    assert(runtime.OutstandingBytes() == 0);
     assert(runtime.TryEnqueue("{\"event\":2}"));
+    assert(runtime.OutstandingBytes() <= options.max_outstanding_bytes);
 
     for (int i = 0; i < 100 && transport.Calls() == 0; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -99,6 +103,7 @@ int main()
 
     runtime.Stop();
     assert(!runtime.IsEnabled());
+    assert(runtime.OutstandingBytes() == 0);
     assert(!runtime.TryEnqueue("{\"event\":3}"));
     return 0;
 }
