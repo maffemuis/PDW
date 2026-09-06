@@ -1,6 +1,6 @@
-// Dutch (Netherlands) localized Windows 11 presentation for the Debug dialog.
-// Keep all control IDs aligned with DEBUGDLGBOX in Rsrc.rc so the existing
-// dialog procedure and diagnostic behavior remain unchanged.
+// Dutch (Netherlands) localized Windows 11 presentation resources.
+// Keep all control IDs aligned with Rsrc.rc so the existing dialog procedures
+// and application behavior remain unchanged.
 
 #include "resrc1.h"
 #include "windows.h"
@@ -8,6 +8,37 @@
 
 LANGUAGE LANG_DUTCH, SUBLANG_DUTCH
 #pragma code_page(65001)
+
+ABOUTDLGBOX DIALOGEX 10, 10, 330, 188
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "Over PDW"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "",IDC_STATIC,0,0,75,114,NOT WS_VISIBLE
+    LTEXT           "PDW-versie",IDC_STATIC,18,18,58,10
+    LTEXT           ".....",IDC_VERSION,82,18,105,10
+    LTEXT           "Decoder voor POCSAG, FLEX, ACARS, MOBITEX en ERMES",IDC_STATIC,18,40,285,10
+    LTEXT           "Copyright (c) 2001 - 2004 Jason Petty",IDC_STATIC,18,62,180,10
+    LTEXT           "2004 - 2010 Peter Hunt",IDC_STATIC,18,77,150,10
+    LTEXT           "2013 GNU GENERAL PUBLIC LICENSE",IDC_STATIC,18,92,190,10
+    LTEXT           "Win2k/XP RS232-ondersteuning door Herman Withaar",IDC_STATIC,18,107,260,10
+    LTEXT           "Powered by Nick ECO AI",IDC_STATIC,18,126,160,10
+    PUSHBUTTON      "PDW-website bezoeken",IDC_WEBSITE,18,150,112,20
+END
+
+CLEARSCREENDLGBOX DIALOGEX 30, 20, 190, 112
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "PDW - Scherm wissen"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "Kies welke vensters je wilt wissen.",IDC_STATIC,16,14,158,12
+    CONTROL         "Monitorvenster",IDC_CLEAR_PANE1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,18,39,120,12
+    CONTROL         "Filtervenster",IDC_CLEAR_PANE2,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,18,58,120,12
+    DEFPUSHBUTTON   "Wissen",IDOK,22,82,66,20
+    PUSHBUTTON      "Annuleren",IDCANCEL,101,82,66,20
+END
 
 DEBUGDLGBOX DIALOGEX 10, 10, 450, 258
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
