@@ -73,7 +73,7 @@ set_source_files_properties( Misc.cpp PROPERTIES
         COMPILE_DEFINITIONS PDW_SHOWMESSAGE_IMPLEMENTATION
 )
 set_source_files_properties( Gfx.cpp PROPERTIES
-        COMPILE_DEFINITIONS "DrawTitleBarGfx=LegacyDrawTitleBarGfx;SetMessageItemPositionsWidth=LegacySetMessageItemPositionsWidth"
+        COMPILE_DEFINITIONS "DrawTitleBarGfx=LegacyDrawTitleBarGfx;DrawPaneLabels=LegacyDrawPaneLabels;SetMessageItemPositionsWidth=LegacySetMessageItemPositionsWidth"
 )
 set_source_files_properties( sound_in.cpp PROPERTIES
         COMPILE_DEFINITIONS "Start_Capturing=LegacyStart_Capturing"
