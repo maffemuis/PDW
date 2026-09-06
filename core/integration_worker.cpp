@@ -8,6 +8,7 @@ namespace pdw
 
 IntegrationWorkerOptions::IntegrationWorkerOptions()
     : queue_capacity(256),
+      max_payload_bytes(1024 * 1024),
       max_attempts(3),
       request_timeout_ms(5000),
       initial_backoff_ms(250),
@@ -50,7 +51,7 @@ bool AsyncIntegrationWorker::Start()
     std::lock_guard<std::mutex> lock(mutex_);
     if (running_) return true;
     if (!IsSafeHttpsEndpoint(endpoint_https_)) return false;
-    if (options_.queue_capacity == 0 || options_.max_attempts == 0) return false;
+    if (options_.queue_capacity == 0 || options_.max_payload_bytes == 0 || options_.max_attempts == 0) return false;
     if (options_.request_timeout_ms == 0 || options_.request_timeout_ms > 120000UL) return false;
     if (options_.initial_backoff_ms > options_.max_backoff_ms) return false;
 
@@ -81,6 +82,11 @@ bool AsyncIntegrationWorker::TryEnqueue(const std::string& json_body)
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!running_ || stopping_)
+        {
+            ++dropped_;
+            return false;
+        }
+        if (json_body.size() > options_.max_payload_bytes)
         {
             ++dropped_;
             return false;
