@@ -8,12 +8,27 @@
 namespace pdw
 {
 
+struct WebhookRuntimeConfig
+{
+    WebhookRuntimeConfig();
+
+    bool enabled;
+    std::string endpoint_https;
+    std::wstring credential_target;
+    unsigned long request_timeout_ms;
+
+    // Secrets are intentionally not part of this structure. Only the
+    // Credential Manager target name may be persisted by a future UI layer.
+    bool IsValid() const;
+};
+
 class WinHttpWebhookTransport : public IWebhookTransport
 {
 public:
     bool PostJson(const WebhookDeliveryRequest& request) override;
 
     static bool IsSafeBearerToken(const std::string& token);
+    static bool IsSafeCredentialTarget(const std::wstring& target_name);
 };
 
 // Reads a Windows Credential Manager GENERIC credential by target name.
