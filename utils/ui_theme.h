@@ -45,6 +45,14 @@ UiTheme DefaultUiTheme();
 UiTheme ParseUiTheme(const char* value, UiTheme fallback = UiTheme::Dark);
 const char* UiThemeIniValue(UiTheme theme);
 
+// Keep the modern theme outside the legacy PROFILE structure. This avoids
+// changing decoder/profile ABI while still making the new setting persistent.
+UiTheme LoadUiThemeSetting(const char* section, const char* iniPath);
+bool SaveUiThemeSetting(UiTheme theme, const char* section, const char* iniPath);
+void SetCurrentUiTheme(UiTheme theme);
+UiTheme CurrentUiTheme();
+const ThemePalette& CurrentThemePalette();
+
 const ThemePalette& GetThemePalette(UiTheme theme);
 
 } // namespace pdw
