@@ -2670,6 +2670,9 @@ void LayoutModernFilterDuplicateDialog(HWND hwnd)
 
 void ConfigureModernFilterDuplicateControls(HWND hwnd)
 {
+    const bool dark = pdw::CurrentUiTheme() == pdw::UiTheme::Dark;
+    const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+
     HWND results = GetDlgItem(hwnd, IDC_FILTERFIND_DUPLICATE);
     if (results)
     {
@@ -2680,7 +2683,9 @@ void ConfigureModernFilterDuplicateControls(HWND hwnd)
         LONG_PTR exStyle = GetWindowLongPtr(results, GWL_EXSTYLE);
         exStyle &= ~static_cast<LONG_PTR>(WS_EX_CLIENTEDGE);
         SetWindowLongPtr(results, GWL_EXSTYLE, exStyle);
-        SetWindowTheme(results, L"Explorer", NULL);
+        SetWindowTheme(results,
+                       dark ? L"DarkMode_Explorer" : L"Explorer",
+                       NULL);
         SendMessage(results, WM_SETFONT,
                     reinterpret_cast<WPARAM>(GetDialogFont()), TRUE);
         SetWindowPos(results, NULL, 0, 0, 0, 0,
@@ -2691,11 +2696,13 @@ void ConfigureModernFilterDuplicateControls(HWND hwnd)
     HWND progress = GetDlgItem(hwnd, IDC_PROGRESS1);
     if (progress)
     {
-        SetWindowTheme(progress, L"Explorer", NULL);
+        SetWindowTheme(progress,
+                       dark ? L"DarkMode_Explorer" : L"Explorer",
+                       NULL);
         SendMessage(progress, PBM_SETBKCOLOR, 0,
-                    static_cast<LPARAM>(RGB(230, 235, 241)));
+                    static_cast<LPARAM>(palette.cardBackground));
         SendMessage(progress, PBM_SETBARCOLOR, 0,
-                    static_cast<LPARAM>(RGB(0, 103, 192)));
+                    static_cast<LPARAM>(palette.accent));
     }
 
     const int actionIds[] = { IDOK, IDCANCEL };
@@ -2712,16 +2719,17 @@ void ConfigureModernFilterDuplicateControls(HWND hwnd)
     }
 
     HWND find = GetDlgItem(hwnd, IDOK);
-    if (find) SetWindowTextW(find, L"Find duplicates");
+    if (find) SetWindowTextW(find, L"Duplicaten zoeken");
     HWND close = GetDlgItem(hwnd, IDCANCEL);
-    if (close) SetWindowTextW(close, L"Close");
+    if (close) SetWindowTextW(close, L"Sluiten");
 }
 
 void PaintModernFilterDuplicateDialog(HWND hwnd, HDC hdc)
 {
     RECT client = {};
     GetClientRect(hwnd, &client);
-    FillRect(hdc, &client, GetDialogSurfaceBrush());
+    const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
+    FillRect(hdc, &client, GetCurrentThemeWindowBrush());
 
     const int margin = ScaleForDpi(hwnd, 18);
     const int header = ScaleForDpi(hwnd, 62);
@@ -2729,26 +2737,27 @@ void PaintModernFilterDuplicateDialog(HWND hwnd, HDC hdc)
     const int listHeight = ScaleForDpi(hwnd, 88);
 
     SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, RGB(24, 39, 58));
+    SetTextColor(hdc, palette.textPrimary);
     HGDIOBJ oldFont = SelectObject(hdc, GetTitleFont());
     RECT title = { margin, ScaleForDpi(hwnd, 10),
                    client.right - margin, ScaleForDpi(hwnd, 34) };
-    DrawTextW(hdc, L"Check duplicate filters", -1, &title,
+    DrawTextW(hdc, L"Dubbele filters zoeken", -1, &title,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
     SelectObject(hdc, oldFont);
 
-    SetTextColor(hdc, RGB(91, 103, 116));
+    SetTextColor(hdc, palette.textSecondary);
     oldFont = SelectObject(hdc, GetDialogFont());
     RECT subtitle = { margin, ScaleForDpi(hwnd, 34),
                       client.right - margin, header - ScaleForDpi(hwnd, 4) };
-    DrawTextW(hdc, L"Find filters with the same type, address and message text.",
+    DrawTextW(hdc,
+              L"Zoek filters met hetzelfde type, adres en dezelfde berichttekst.",
               -1, &subtitle,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX |
               DT_END_ELLIPSIS);
     SelectObject(hdc, oldFont);
 
     DrawLine(hdc, margin, header - 1, client.right - margin, header - 1,
-             RGB(216, 224, 233));
+             palette.divider);
 
     RECT resultsCard = {
         margin - 1,
@@ -2756,7 +2765,8 @@ void PaintModernFilterDuplicateDialog(HWND hwnd, HDC hdc)
         client.right - margin + 1,
         listTop + listHeight + 1
     };
-    FillRoundedRect(hdc, resultsCard, RGB(255, 255, 255), RGB(206, 216, 227),
+    FillRoundedRect(hdc, resultsCard,
+                    palette.controlBackground, palette.border,
                     ScaleForDpi(hwnd, 8));
 }
 
@@ -2783,19 +2793,20 @@ LRESULT CALLBACK FilterDuplicateWindowSubclassProc(HWND hwnd, UINT message,
         case WM_CTLCOLORBTN:
         {
             HDC hdc = reinterpret_cast<HDC>(wParam);
+            const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
             SetBkMode(hdc, TRANSPARENT);
-            SetTextColor(hdc, RGB(40, 48, 58));
-            return reinterpret_cast<LRESULT>(GetDialogSurfaceBrush());
+            SetTextColor(hdc, palette.textPrimary);
+            return reinterpret_cast<LRESULT>(GetCurrentThemeWindowBrush());
         }
 
         case WM_CTLCOLORLISTBOX:
         {
             HDC hdc = reinterpret_cast<HDC>(wParam);
+            const pdw::ThemePalette& palette = pdw::CurrentThemePalette();
             SetBkMode(hdc, OPAQUE);
-            SetTextColor(hdc, RGB(32, 32, 32));
-            SetBkColor(hdc, RGB(255, 255, 255));
-            static HBRUSH listBrush = CreateSolidBrush(RGB(255, 255, 255));
-            return reinterpret_cast<LRESULT>(listBrush);
+            SetTextColor(hdc, palette.textPrimary);
+            SetBkColor(hdc, palette.controlBackground);
+            return reinterpret_cast<LRESULT>(GetCurrentThemeControlBrush());
         }
 
         case WM_DRAWITEM:
@@ -2811,7 +2822,13 @@ LRESULT CALLBACK FilterDuplicateWindowSubclassProc(HWND hwnd, UINT message,
             break;
         }
 
+        case WM_THEMECHANGED:
+            ConfigureModernFilterDuplicateControls(hwnd);
+            InvalidateRect(hwnd, NULL, TRUE);
+            break;
+
         case WM_NCDESTROY:
+            RemovePropW(hwnd, L"PDW.ThemeAwareDialog");
             RemoveWindowSubclass(hwnd, FilterDuplicateWindowSubclassProc,
                                  subclassId);
             break;
@@ -2823,6 +2840,14 @@ LRESULT CALLBACK FilterDuplicateWindowSubclassProc(HWND hwnd, UINT message,
 void EnableModernFilterDuplicateDialog(HWND hwnd)
 {
     if (!IsFilterDuplicateDialog(hwnd)) return;
+
+    SetPropW(hwnd, L"PDW.ThemeAwareDialog",
+             reinterpret_cast<HANDLE>(static_cast<INT_PTR>(1)));
+    const BOOL dark = pdw::CurrentUiTheme() == pdw::UiTheme::Dark ? TRUE : FALSE;
+    DwmSetWindowAttribute(hwnd, kDwmUseImmersiveDarkMode, &dark, sizeof(dark));
+    SetWindowTheme(hwnd,
+                   dark ? L"DarkMode_Explorer" : L"Explorer",
+                   NULL);
 
     SetWindowSubclass(hwnd, FilterDuplicateWindowSubclassProc,
                       kFilterDuplicateWindowSubclassId, 0);
