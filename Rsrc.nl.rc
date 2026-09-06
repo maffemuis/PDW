@@ -290,3 +290,22 @@ BEGIN
     DEFPUSHBUTTON   "OK",IDOK,266,312,66,20
     PUSHBUTTON      "Annuleren",IDCANCEL,340,312,74,20
 END
+
+SYSTEMTRAYDLGBOX DIALOGEX 10, 10, 310, 176
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "PDW - Systeemvak"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "Bepaal hoe PDW zich gedraagt wanneer het venster is geminimaliseerd.",IDC_STATIC,16,14,278,22
+    CONTROL         "Naar het systeemvak verplaatsen bij minimaliseren",IDC_SYSTEMTRAY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,18,44,256,12
+
+    GROUPBOX        "Venster automatisch herstellen",IDC_STATIC,16,68,278,62
+    CONTROL         "Automatisch herstellen wanneer PDW een bericht ontvangt",IDC_SYSTEMTRAY_RESTORE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,28,84,246,12
+    CONTROL         "Elk nieuw bericht",IDC_SYSTEMTRAY_NEW,"Button",BS_AUTORADIOBUTTON | WS_TABSTOP,40,101,116,12
+    CONTROL         "Nieuw monitor-only- of gefilterd bericht",IDC_SYSTEMTRAY_MONLY,"Button",BS_AUTORADIOBUTTON | WS_TABSTOP,160,101,126,12
+    CONTROL         "Nieuw gefilterd bericht",IDC_SYSTEMTRAY_FILTER,"Button",BS_AUTORADIOBUTTON | WS_TABSTOP,40,116,116,12
+
+    DEFPUSHBUTTON   "OK",IDOK,148,144,66,20
+    PUSHBUTTON      "Annuleren",IDCANCEL,222,144,72,20
+END
