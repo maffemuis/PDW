@@ -147,7 +147,15 @@ bool AsyncIntegrationWorker::DeliverWithRetry(const std::string& json_body)
         request.endpoint_https = endpoint_https_;
         request.json_body = json_body;
         request.timeout_ms = options_.request_timeout_ms;
-        if (credential_provider_) request.bearer_token = credential_provider_();
+        if (credential_provider_)
+        {
+            request.bearer_token = credential_provider_();
+            // A configured credential provider must yield a token. Never
+            // downgrade an authenticated webhook configuration to an
+            // unauthenticated network request when Credential Manager is
+            // unavailable or the target entry is missing.
+            if (request.bearer_token.empty()) return false;
+        }
 
         if (transport_.PostJson(request)) return true;
 
