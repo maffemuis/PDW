@@ -56,6 +56,7 @@ set( PDW_SRCS
         Initapp.cpp
         Misc.cpp
         Rsrc.rc
+        Rsrc.nl.rc
         PDW.cpp
         Pocsag.cpp
         acars.cpp

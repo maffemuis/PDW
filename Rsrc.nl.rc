@@ -1,0 +1,52 @@
+// Dutch (Netherlands) localized Windows 11 presentation for the Debug dialog.
+// Keep all control IDs aligned with DEBUGDLGBOX in Rsrc.rc so the existing
+// dialog procedure and diagnostic behavior remain unchanged.
+
+#include "resrc1.h"
+#include "windows.h"
+#include "headers\resource.h"
+
+LANGUAGE LANG_DUTCH, SUBLANG_DUTCH
+#pragma code_page(65001)
+
+DEBUGDLGBOX DIALOGEX 10, 10, 450, 258
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "PDW Diagnostische informatie"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Sessie",IDC_STATIC,8,8,434,88
+    LTEXT           "Besturingssysteem:",IDC_STATIC,18,23,73,9
+    LTEXT           ".....",IDC_DEBUG_OS,96,23,118,9
+    LTEXT           "Gestart:",IDC_STATIC,18,38,73,9
+    LTEXT           ".....",IDC_DEBUG_STARTED,96,38,118,9
+    LTEXT           "Actief:",IDC_STATIC,18,53,73,9
+    LTEXT           ".....",IDC_DEBUG_RUNNING,96,53,118,9
+    LTEXT           "Invoer:",IDC_STATIC,18,68,73,9
+    LTEXT           ".....",IDC_DEBUG_INPUT,96,68,118,9
+    LTEXT           "FLEX-tijd:",IDC_STATIC,18,83,73,9
+    LTEXT           ".....",IDC_DEBUG_FLEXTIME,96,83,118,9
+
+    LTEXT           "Berichten:",IDC_STATIC,238,23,82,9
+    LTEXT           ".....",IDC_DEBUG_MSG,324,23,94,9
+    LTEXT           "Afgewezen:",IDC_STATIC,238,38,82,9
+    LTEXT           ".....",IDC_DEBUG_REJECTED,324,38,94,9
+    LTEXT           "Geblokkeerd:",IDC_STATIC,238,53,82,9
+    LTEXT           ".....",IDC_DEBUG_BLOCKED,324,53,94,9
+    LTEXT           "Buffer (timer):",IDC_STATIC,238,68,82,9
+    LTEXT           ".....",IDC_DEBUG_BLOCKBUFFER,324,68,94,9
+    LTEXT           "Groepsoproepen:",IDC_STATIC,238,83,82,9
+    LTEXT           ".....",IDC_DEBUG_GROUPMSG,324,83,94,9
+    LTEXT           "Gemiste groepsoproepen:",IDC_STATIC,238,98,100,9
+    LTEXT           ".....",IDC_DEBUG_MISSED,342,98,76,9
+
+    LTEXT           "TEST:",IDC_STATIC,18,98,28,9,NOT WS_VISIBLE
+    LTEXT           ".....",IDC_DEBUG_TEST,52,98,102,9,NOT WS_VISIBLE
+
+    GROUPBOX        "RX / COM-diagnostiek",IDC_STATIC,8,112,434,138
+    EDITTEXT        IDC_DEBUG_RXTEXT,18,128,414,84,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "Ruwe RX-log starten",IDC_DEBUG_RAW_START,18,220,94,18
+    PUSHBUTTON      "Ruwe RX-log stoppen",IDC_DEBUG_RAW_STOP,120,220,94,18
+    PUSHBUTTON      "Diagnostiek kopiëren",IDC_DEBUG_COPY,222,220,94,18
+    LTEXT           "De ruwe log is begrensd tot 16 MiB en stopt automatisch bij de limiet.",IDC_STATIC,324,219,108,25
+END
