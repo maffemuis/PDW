@@ -6,6 +6,7 @@
 #endif
 
 #include <windows.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "headers\pdw.h"
@@ -16,6 +17,23 @@ BOOL LegacyGetPrivateProfileSettings(LPCTSTR lpszAppTitle, LPCTSTR lpszIniPathNa
 static bool PathMissing(LPCTSTR path)
 {
     return GetFileAttributes(path) == INVALID_FILE_ATTRIBUTES;
+}
+
+static int DetectFirstPresentComPort()
+{
+    char deviceName[16];
+    char target[1024];
+
+    // QueryDosDevice reports the COM device names Windows currently exposes.
+    // Scan the full legacy-supported numeric range instead of assuming COM1/COM2.
+    for (int port = 1; port <= 256; ++port)
+    {
+        sprintf(deviceName, "COM%d", port);
+        if (QueryDosDeviceA(deviceName, target, sizeof(target)) != 0)
+            return port;
+    }
+
+    return 0;
 }
 
 static void EnsureFirstRunFiles()
@@ -56,12 +74,14 @@ BOOL GetPrivateProfileSettings(LPCTSTR lpszAppTitle, LPCTSTR lpszIniPathName, PP
 
     if (firstRun)
     {
+        const int detectedComPort = DetectFirstPresentComPort();
+
         // Clean-install defaults requested for the modern standalone build:
-        // serial input enabled, COM2 selected, RS232 FLEX-1600 mode selected,
-        // and sound-card capture disabled so there is one unambiguous input path.
-        // Existing installations retain whatever is already stored in PDW.ini.
-        pProfile->comPortEnabled = 1;
-        pProfile->comPort = 2;
+        // prefer a COM port that Windows actually exposes and select RS232
+        // FLEX-1600. If no COM port exists, keep serial disabled instead of
+        // forcing COM2 and generating a misleading startup/driver error.
+        pProfile->comPort = detectedComPort ? detectedComPort : 2;
+        pProfile->comPortEnabled = detectedComPort ? 1 : 0;
         pProfile->comPortRS232 = 2; // 1=Pocsag, 2=Flex-1600, 3=Mobitex
         pProfile->audioEnabled = 0;
 
