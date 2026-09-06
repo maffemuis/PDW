@@ -42,9 +42,11 @@ public:
 
     bool PostJson(const pdw::WebhookDeliveryRequest&) override
     {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            ++calls_;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms_));
-        std::lock_guard<std::mutex> lock(mutex_);
-        ++calls_;
         return true;
     }
 
@@ -75,6 +77,16 @@ bool WaitForFailed(pdw::AsyncIntegrationWorker& worker, std::size_t count)
     for (int i = 0; i < 100; ++i)
     {
         if (worker.FailedCount() >= count) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return false;
+}
+
+bool WaitForTransportCalls(const SlowTransport& transport, int count)
+{
+    for (int i = 0; i < 100; ++i)
+    {
+        if (transport.Calls() >= count) return true;
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     return false;
@@ -195,6 +207,27 @@ int main()
     assert(outstanding_worker.OutstandingBytes() == 0);
     outstanding_worker.Stop();
     assert(outstanding_transport.Calls() == 1);
+
+    SlowTransport stop_transport(100);
+    pdw::IntegrationWorkerOptions stop_options = options;
+    stop_options.queue_capacity = 4;
+    stop_options.max_payload_bytes = 16;
+    stop_options.max_outstanding_bytes = 64;
+    stop_options.max_attempts = 1;
+    pdw::AsyncIntegrationWorker stop_worker(
+        stop_transport, stop_options, "https://example.test/hook",
+        pdw::AsyncIntegrationWorker::CredentialProvider());
+    assert(stop_worker.Start());
+    assert(stop_worker.TryEnqueue("one"));
+    assert(stop_worker.TryEnqueue("two"));
+    assert(stop_worker.TryEnqueue("three"));
+    assert(WaitForTransportCalls(stop_transport, 1));
+    stop_worker.Stop();
+    assert(stop_transport.Calls() == 1);
+    assert(stop_worker.DroppedCount() == 2);
+    assert(stop_worker.DeliveredCount() == 1);
+    assert(stop_worker.QueueSize() == 0);
+    assert(stop_worker.OutstandingBytes() == 0);
 
     FakeTransport zero_payload_limit_transport;
     pdw::IntegrationWorkerOptions zero_payload_options = options;
