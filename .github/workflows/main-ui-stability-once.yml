@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write
 
+# One-shot helper: exact-match guards stop before commit if the active UI has drifted.
 jobs:
   apply:
     runs-on: [self-hosted, Windows, X64]
