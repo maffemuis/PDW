@@ -55,6 +55,7 @@ set( PDW_SRCS
         Rsrc.nl.finish.rc
         PDW.cpp
         startup_defaults.cpp
+        core/startup_input_selection.cpp
         Pocsag.cpp
         acars.cpp
         decode.cpp
