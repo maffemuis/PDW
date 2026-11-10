@@ -5,11 +5,15 @@ on:
   push:
     branches:
       - modernization/windows11-ui
+      - "fix/**"
     paths:
       - "utils/windows11_*.cpp"
       - "utils/windows11_ui.h"
       - "gfx_startup_guard.cpp"
+      - "core/input_runtime_status.h"
       - ".github/workflows/ui-smoke.yml"
+  pull_request:
+    branches: [ "modernization/**" ]
 
 jobs:
   ui-smoke:
