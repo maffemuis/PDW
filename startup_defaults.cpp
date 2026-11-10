@@ -6,11 +6,13 @@
 #endif
 
 #include <windows.h>
+#include <mmsystem.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "headers\pdw.h"
 #include "headers\initapp.h"
+#include "core/startup_input_selection.h"
 
 BOOL LegacyGetPrivateProfileSettings(LPCTSTR lpszAppTitle, LPCTSTR lpszIniPathName, PPROFILE pProfile);
 
@@ -74,16 +76,17 @@ BOOL GetPrivateProfileSettings(LPCTSTR lpszAppTitle, LPCTSTR lpszIniPathName, PP
 
     if (firstRun)
     {
-        const int detectedComPort = DetectFirstPresentComPort();
+        const StartupInputSelection input = ChooseStartupInput(
+            waveInGetNumDevs(), DetectFirstPresentComPort());
 
-        // Clean-install defaults requested for the modern standalone build:
-        // prefer a COM port that Windows actually exposes and select RS232
-        // FLEX-1600. If no COM port exists, keep serial disabled instead of
-        // forcing COM2 and generating a misleading startup/driver error.
-        pProfile->comPort = detectedComPort ? detectedComPort : 2;
-        pProfile->comPortEnabled = detectedComPort ? 1 : 0;
+        // Use soundcard capture on first run when Windows exposes it.
+        // Otherwise use the first COM port if present; never both.
+        // Existing PDW.ini settings are not changed.
+        pProfile->comPort = input.comPort;
+        pProfile->comPortEnabled = input.comPortEnabled;
         pProfile->comPortRS232 = 2; // 1=Pocsag, 2=Flex-1600, 3=Mobitex
-        pProfile->audioEnabled = 0;
+        pProfile->audioDevice = input.audioDevice;
+        pProfile->audioEnabled = input.audioEnabled;
 
         pProfile->monitor_paging = TRUE;
         pProfile->decodeflex = 1;

@@ -39,7 +39,7 @@
 // 11/06/2003 PH:  Added switch '/callmax' for optimized Callmax-pages
 // 26/06/2003 AVE: Added html.cpp & html.h for HTML-logfiles
 // 28/06/2003 PH:  Added  IRC-logfiles via switch '/irc'
-// 01/09/2003 PH:  Linefeed character will be replaced by '»'
+// 01/09/2003 PH:  Linefeed character will be replaced by 'Â»'
 // 02/09/2003 PH:  Added extra column "type" for FLEX/POCSAG
 // 03/09/2003 PH:  Changed GetTimeFormat/Date, now always leading zeros are displayed
 // 07/09/2033 PH:  Removed Flush-Time. All logfiles will be flushed immediately
@@ -502,7 +502,7 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 	Profile.LabelNewline		= 1;	// Flag for labels on new line
 	Profile.ColLogfile[0]		= '\0';	// Flag for columns in logfile
 	Profile.ColFilterfile[0]	= '\0';	// Flag for columns in filterfiles
-	Profile.Linefeed			= 1;	// Flag for converting » to linefeed
+	Profile.Linefeed			= 1;	// Flag for converting Â» to linefeed
 	Profile.Separator			= 1;	// Flag for separating messages (empty line)
 	Profile.MonthNumber			= 1;	// Flag for using monthnumber in logfilenames
 	Profile.DateFormat			= 0;	// Flag for date format
@@ -3524,10 +3524,28 @@ BOOL FAR PASCAL SetupDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			{
 				waveInGetDevCaps(i, &WaveInCaps, sizeof(WAVEINCAPS));	// PH: Get device name
 				sprintf(szDeviceName, "%i. %s", i+1, WaveInCaps.szPname);		
-				SendDlgItemMessage(hDlg, IDC_AUDIODEVICES, CB_ADDSTRING, 0, (LPARAM) (LPSTR) szDeviceName);
+				// CBS_SORT may reorder rows; preserve the real waveIn device ID.
+				const LRESULT listIndex = SendDlgItemMessage(hDlg, IDC_AUDIODEVICES, CB_ADDSTRING, 0, (LPARAM) (LPSTR) szDeviceName);
+				if (listIndex >= 0)
+					SendDlgItemMessage(hDlg, IDC_AUDIODEVICES, CB_SETITEMDATA, (WPARAM)listIndex, (LPARAM)i);
 			}
 		}
-		SendDlgItemMessage(hDlg, IDC_AUDIODEVICES, CB_SETCURSEL, more_audio ? Profile.audioDevice : 0, 0L);
+		// Profile.audioDevice is a waveIn ID, never a sorted combo-box row.
+		{
+			int selectedAudioIndex = CB_ERR;
+			const int count = (int)SendDlgItemMessage(hDlg, IDC_AUDIODEVICES, CB_GETCOUNT, 0, 0L);
+			for (int listIndex = 0; listIndex < count; ++listIndex)
+			{
+				if (SendDlgItemMessage(hDlg, IDC_AUDIODEVICES, CB_GETITEMDATA, (WPARAM)listIndex, 0L) == Profile.audioDevice)
+				{
+					selectedAudioIndex = listIndex;
+					break;
+				}
+			}
+			if (selectedAudioIndex == CB_ERR && audio_devices > 0)
+				selectedAudioIndex = 0;
+			SendDlgItemMessage(hDlg, IDC_AUDIODEVICES, CB_SETCURSEL, (WPARAM)selectedAudioIndex, 0L);
+		}
 		if (!more_audio) EnableWindow(GetDlgItem(hDlg, IDC_AUDIODEVICES), false);
 
 		value = GetWindowLong(GetDlgItem(hDlg, IDC_AUDIODEVICES), GWL_STYLE) - CBS_DROPDOWNLIST;
@@ -3770,7 +3788,16 @@ BOOL FAR PASCAL SetupDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			Profile.comPortRS232   = IsDlgButtonChecked(hDlg, IDC_COMRS232);
 			if (Profile.comPortRS232) Profile.comPortRS232 += SendDlgItemMessage(hDlg, IDC_RS232MODE, CB_GETCURSEL, 0, 0L);
 			Profile.audioEnabled   = IsDlgButtonChecked(hDlg, IDC_AUDIOENABLE);
-			Profile.audioDevice    = SendDlgItemMessage(hDlg, IDC_AUDIODEVICES, CB_GETCURSEL, 0, 0L);
+			// Persist the actual waveIn ID rather than a sorted combo-box row.
+			{
+				const LRESULT row = SendDlgItemMessage(hDlg, IDC_AUDIODEVICES, CB_GETCURSEL, 0, 0L);
+				if (row != CB_ERR && audio_devices > 0)
+				{
+					const LRESULT deviceId = SendDlgItemMessage(hDlg, IDC_AUDIODEVICES, CB_GETITEMDATA, (WPARAM)row, 0L);
+					if (deviceId != CB_ERR)
+						Profile.audioDevice = (int)deviceId;
+				}
+			}
 
 			if (Profile.audioDevice != old_device)
 			{
@@ -5045,7 +5072,7 @@ LRESULT FAR PASCAL MOBITEXColorWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
 		SetTextColor(hDC, tmp_biterrors);
 		TextOut(hDC, 0, 0, "Q4E", 3);
 		SetTextColor(hDC, tmp_message);
-		TextOut(hDC, 0, 0, "#VX·&1$H? Z", 11);
+		TextOut(hDC, 0, 0, "#VXÂ·&1$H? Z", 11);
 
 		// Next line
 		MoveToEx(hDC, 0, tmp_cyChar*3, &lpPoint);
@@ -11441,7 +11468,7 @@ void GoogleMaps(int iPosition)
 		}
 		szTMP[i] = '\0';
 
-		if ((szTMP[0] == '+') && (strlen(szTMP) == 18))		// + 4 ] v ^ v # c ·"
+		if ((szTMP[0] == '+') && (strlen(szTMP) == 18))		// + 4 ] v ^ v # c Â·"
 		{
 			for (i=2; i<13; i+=2)
 			{

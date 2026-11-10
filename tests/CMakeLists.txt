@@ -1,3 +1,28 @@
+# Input status is derived from actual receiver startup, not configuration alone.
+add_executable( pdw_input_runtime_status_test
+    core/input_runtime_status_test.cpp
+)
+target_include_directories( pdw_input_runtime_status_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+)
+add_test(
+    NAME pdw_input_runtime_status
+    COMMAND pdw_input_runtime_status_test
+)
+
+# First-run input selection must remain testable without connected hardware.
+add_executable( pdw_startup_input_selection_test
+    core/startup_input_selection_test.cpp
+    ${CMAKE_SOURCE_DIR}/core/startup_input_selection.cpp
+)
+target_include_directories( pdw_startup_input_selection_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+)
+add_test(
+    NAME pdw_startup_input_selection
+    COMMAND pdw_startup_input_selection_test
+)
+
 add_executable( pdw_decoded_message_test
     core/decoded_message_test.cpp
     ${CMAKE_SOURCE_DIR}/core/decoded_message.cpp

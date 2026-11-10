@@ -6,8 +6,9 @@ on:
     branches:
       - master
       - "modernization/**"
+      - "fix/**"
   pull_request:
-    branches: [ master ]
+    branches: [ master, "modernization/**" ]
 
 jobs:
   build:

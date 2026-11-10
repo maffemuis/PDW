@@ -1,5 +1,6 @@
 #include "windows11_ui.h"
 #include "ui_theme.h"
+#include "..\\core\\input_runtime_status.h"
 
 #include <commctrl.h>
 #include <dwmapi.h>
@@ -17,6 +18,8 @@
 extern double dRX_Quality;
 extern int si_index;
 extern bool bPauseFlag;
+extern bool bCapturing;
+extern int nDriverLoaded;
 
 namespace {
 
@@ -636,7 +639,15 @@ void DrawStatusBar(HDC hdc, HWND hwnd)
 
     const int centerY = (g_statusRect.top + g_statusRect.bottom) / 2;
     const int dot = ScaleForDpi(hwnd, 10);
-    const COLORREF stateColor = bPauseFlag ? paused : green;
+    // A configured input is not necessarily an open/running input.
+    const bool receiverRunning = bCapturing || nDriverLoaded != 0;
+    const InputRuntimeStatus inputStatus = GetInputRuntimeStatus(
+        Profile.audioEnabled != 0, Profile.comPortEnabled != 0,
+        receiverRunning, bPauseFlag);
+    const COLORREF stateColor =
+        inputStatus == InputRuntimeStatus::Running ? green :
+        inputStatus == InputRuntimeStatus::Paused ? paused :
+        inputStatus == InputRuntimeStatus::Error ? palette.danger : gray;
     HBRUSH dotBrush = CreateSolidBrush(stateColor);
     HPEN dotPen = CreatePen(PS_SOLID, 1, stateColor);
     HGDIOBJ oldBrush = SelectObject(hdc, dotBrush);
@@ -651,9 +662,13 @@ void DrawStatusBar(HDC hdc, HWND hwnd)
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, fg);
     HGDIOBJ oldFont = SelectObject(hdc, GetDialogFont());
+    const wchar_t* stateLabel =
+        inputStatus == InputRuntimeStatus::Running ? L"Ready" :
+        inputStatus == InputRuntimeStatus::Paused ? L"Paused" :
+        inputStatus == InputRuntimeStatus::Error ? L"Input error" : L"No input";
     RECT ready = { ScaleForDpi(hwnd, 34), g_statusRect.top,
-                   ScaleForDpi(hwnd, 120), g_statusRect.bottom };
-    DrawTextW(hdc, bPauseFlag ? L"Paused" : L"Ready", -1, &ready,
+                   ScaleForDpi(hwnd, 158), g_statusRect.bottom };
+    DrawTextW(hdc, stateLabel, -1, &ready,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
     wchar_t filters[64] = {};
@@ -669,7 +684,7 @@ void DrawStatusBar(HDC hdc, HWND hwnd)
     DrawTextW(hdc, CurrentModeLabel(), -1, &modeRect,
               DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
-    const bool rxActive = !bPauseFlag && si_index > 0;
+    const bool rxActive = inputStatus == InputRuntimeStatus::Running && si_index > 0;
     const COLORREF rxColor = rxActive ? green : gray;
     HBRUSH rxBrush = CreateSolidBrush(rxColor);
     HPEN rxPen = CreatePen(PS_SOLID, 1, rxColor);

@@ -1,0 +1,32 @@
+name: PDW audio startup policy
+
+on:
+  push:
+    branches:
+      - "fix/**"
+    paths:
+      - "core/startup_input_selection.*"
+      - "tests/core/startup_input_selection_test.cpp"
+      - ".github/workflows/audio-input-policy.yml"
+  pull_request:
+    branches:
+      - "modernization/**"
+    paths:
+      - "core/startup_input_selection.*"
+      - "tests/core/startup_input_selection_test.cpp"
+      - ".github/workflows/audio-input-policy.yml"
+  workflow_dispatch:
+
+jobs:
+  audio-startup-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and run hardware-independent startup test
+        shell: bash
+        run: |
+          c++ -std=c++11 -Wall -Wextra -Werror -Icore \
+            core/startup_input_selection.cpp \
+            tests/core/startup_input_selection_test.cpp \
+            -o /tmp/pdw_startup_input_selection_test
+          /tmp/pdw_startup_input_selection_test
